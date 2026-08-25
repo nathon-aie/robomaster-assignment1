@@ -109,9 +109,10 @@ class WallCenteringPID:
         lateral_ki: float = 0.0001,
         lateral_kd: float = 0.0012,  # Damping to prevent oscillating across corridor
         max_lateral_speed: float = 0.10,  # Max vy m/s (gentle correction)
-        yaw_kp: float = 0.025,  # Strong heading hold to keep robot straight
-        yaw_kd: float = 0.004,
-        max_yaw_speed: float = 25.0,  # Max vz deg/s
+        yaw_kp: float = 1.8,  # Active Heading Hold: 1 deg error -> 1.8 deg/s vz
+        yaw_ki: float = 0.05,  # Eliminates steady-state heading drift
+        yaw_kd: float = 0.15,  # Strong derivative damping against heading wobble
+        max_yaw_speed: float = 35.0,  # Max vz deg/s
     ):
         self.nominal_side_dist_mm = nominal_side_dist_mm
         self.tolerance_mm = tolerance_mm
@@ -130,15 +131,16 @@ class WallCenteringPID:
             )
         )
 
-        # Yaw Heading PID: error in deg -> vz in deg/s
+        # Yaw Heading PID: error in deg -> vz in deg/s (Locks heading rock-solid with 0 deadband)
         self.pid_yaw = PIDController(
             PIDGains(
                 kp=yaw_kp,
-                ki=0.0,
+                ki=yaw_ki,
                 kd=yaw_kd,
                 max_output=max_yaw_speed,
                 min_output=-max_yaw_speed,
-                deadband=0.5,  # 0.5 degree deadband for rock-solid straight heading
+                integral_limit=20.0,
+                deadband=0.0,  # 0.0 deadband: instantly corrects even a fraction of a degree
             )
         )
 

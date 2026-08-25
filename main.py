@@ -134,6 +134,53 @@ def cmd_step_test(args):
     sys_runner.shutdown()
 
 
+def cmd_turn_test(args):
+    direction_str = str(args.direction).lower()
+    if direction_str == "left":
+        deg = 90.0
+        cmd_text = "Turn Left (90 deg)"
+    elif direction_str == "right":
+        deg = -90.0
+        cmd_text = "Turn Right (90 deg)"
+    elif direction_str == "around":
+        deg = 180.0
+        cmd_text = "Turn Around (180 deg)"
+    else:
+        try:
+            deg = float(direction_str)
+            cmd_text = f"Turn {deg:+.0f} deg"
+        except ValueError:
+            print(f"Unknown direction '{args.direction}'. Use 'left', 'right', 'around', or degrees like '90' or '-90'.")
+            return 1
+
+    print("=" * 65)
+    print(f"🔄 TESTING TURN: {cmd_text} (z={deg:+.0f}°)")
+    print("=" * 65)
+
+    sys_runner = RobotSystem(
+        calibration_file=args.calibration,
+        sensor_rate_hz=args.rate,
+        mock_mode=args.mock,
+        conn_type=args.conn_type,
+    )
+    sys_runner.connect_robot()
+    sys_runner.setup_threads()
+
+    if sys_runner.thread_2_controller:
+        sys_runner.thread_2_controller.set_commands([cmd_text])
+
+    def sig_handler(sig, frame):
+        print("\nInterrupt received. Stopping...")
+        sys_runner.shutdown()
+        sys.exit(0)
+
+    signal.signal(signal.SIGINT, sig_handler)
+    sys_runner.start()
+    sys_runner.wait_for_completion(timeout=15.0)
+    sys_runner.shutdown()
+    return 0
+
+
 def cmd_monitor(args):
     print("=" * 65)
     print("📡 LIVE SENSOR MONITOR (THREAD 1)")
@@ -228,19 +275,27 @@ def main():
     step_p.add_argument("--nominal-side", type=float, default=140.0)
     step_p.add_argument("--mock", action="store_true")
 
-    # 4. Monitor
+    # 4. Turn-test
+    turn_p = subparsers.add_parser("turn-test", help="Test in-place turn (+90 right, -90 left, 180 around)")
+    turn_p.add_argument("--direction", choices=("left", "right", "around"), default="right", help="Turn direction: left (z=-90), right (z=+90), around (z=180)")
+    turn_p.add_argument("--conn-type", choices=("ap", "sta"), default="ap")
+    turn_p.add_argument("--calibration", default="calibration_output/calibration.json")
+    turn_p.add_argument("--rate", type=float, default=20.0)
+    turn_p.add_argument("--mock", action="store_true")
+
+    # 5. Monitor
     mon_p = subparsers.add_parser("monitor", help="Live stream sensor telemetry (Thread 1)")
     mon_p.add_argument("--conn-type", choices=("ap", "sta"), default="ap")
     mon_p.add_argument("--calibration", default="calibration_output/calibration.json")
     mon_p.add_argument("--rate", type=float, default=20.0)
     mon_p.add_argument("--mock", action="store_true", help="Monitor mock data")
 
-    # 5. Analyze
+    # 6. Analyze
     ana_p = subparsers.add_parser("analyze", help="Analyze telemetry log and generate graphs")
     ana_p.add_argument("file", help="Path to telemetry JSON file")
     ana_p.add_argument("--no-plot", action="store_true", help="Skip plot generation")
 
-    # 6. Calibrate
+    # 7. Calibrate
     cal_p = subparsers.add_parser("calibrate", help="Sensor calibration tools (Step 1)")
     cal_sub = cal_p.add_subparsers(dest="cal_cmd", required=True)
     c_init = cal_sub.add_parser("init-csv", help="create CSV template")
@@ -257,7 +312,7 @@ def main():
     c_fit.add_argument("input", default="data/calibration_measurements.csv")
     c_fit.add_argument("--output-dir", default="calibration_output")
 
-    # 7. Map GUI
+    # 8. Map GUI
     subparsers.add_parser("map", help="Launch interactive Grid Map & A* Planner GUI")
 
     args = parser.parse_args()
@@ -268,6 +323,8 @@ def main():
         return cmd_run(args)
     elif args.command == "step-test":
         return cmd_step_test(args)
+    elif args.command == "turn-test":
+        return cmd_turn_test(args)
     elif args.command == "monitor":
         return cmd_monitor(args)
     elif args.command == "analyze":

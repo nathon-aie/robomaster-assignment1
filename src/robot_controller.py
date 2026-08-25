@@ -331,10 +331,11 @@ class RobotControllerThread(threading.Thread):
             time.sleep(0.1)
 
     def turn_to_relative(self, deg: float, speed: float = 45.0):
-        """Closed-loop relative in-place turn (e.g. +90 right, -90 left, 180 around)."""
-        self.target_heading_deg = (self.target_heading_deg + deg) % 360.0
-        self.current_action = f"TURN_{deg}_DEG"
-        print(f"\n[Controller] Turning {deg:+.0f}° -> Target Heading: {self.target_heading_deg:.0f}°...")
+        """Closed-loop relative in-place turn (+90 Left, -90 Right, 180 Around)."""
+        self.target_heading_deg = (self.target_heading_deg + deg + 180.0) % 360.0 - 180.0
+        self.current_action = f"TURN_{deg:+.0f}_DEG"
+        dir_name = "Left (เลี้ยวซ้าย z=+90)" if deg > 0 else ("Right (เลี้ยวขวา z=-90)" if deg < 0 else "Around (กลับหลัง z=180)")
+        print(f"\n[Controller] 🔄 Executing Turn {dir_name}: z={deg:+.0f}° -> Target Heading: {self.target_heading_deg:.0f}°...")
 
         if self.mock_mode or self.robot is None:
             if self.mock_actuator:
@@ -346,9 +347,25 @@ class RobotControllerThread(threading.Thread):
             action = self.robot.chassis.move(x=0, y=0, z=deg, z_speed=speed)
             action.wait_for_completed()
 
-        # Settling fine alignment for heading and lateral centering
-        time.sleep(0.15)
-        self.align_at_cell_center(duration_sec=0.3)
+        # Stop chassis and reset PID states cleanly (prevent post-turn jerking/twitching)
+        self.stop_chassis()
+        self.wall_pid.reset()
+        time.sleep(0.20)
+
+        end_state = self.sensor_hub.get_latest_state()
+        print(f"[Controller] ✅ Turn Completed: Current Yaw = {end_state.yaw:+.1f}° (Target = {self.target_heading_deg:.0f}°)\n")
+
+    def turn_left(self, deg: float = 90.0, speed: float = 45.0):
+        """เลี้ยวซ้าย z = +90 องศา."""
+        self.turn_to_relative(deg=+abs(deg), speed=speed)
+
+    def turn_right(self, deg: float = 90.0, speed: float = 45.0):
+        """เลี้ยวขวา z = -90 องศา."""
+        self.turn_to_relative(deg=-abs(deg), speed=speed)
+
+    def turn_around(self, speed: float = 45.0):
+        """กลับหลังหัน z = 180 องศา."""
+        self.turn_to_relative(deg=180.0, speed=speed)
 
     def emergency_stop(self):
         """Stops all robot motion immediately."""
@@ -381,11 +398,11 @@ class RobotControllerThread(threading.Thread):
             cells = int(parts[1].replace("cells", "").replace("cell", "").strip())
             self.move_forward_grid(cells=cells)
         elif "Turn Right (90 deg)" in cmd:
-            self.turn_to_relative(deg=90)
+            self.turn_right()
         elif "Turn Left (90 deg)" in cmd:
-            self.turn_to_relative(deg=-90)
+            self.turn_left()
         elif "Turn Around (180 deg)" in cmd:
-            self.turn_to_relative(deg=180)
+            self.turn_around()
         elif "Gripper Open" in cmd:
             self.operate_gripper("open")
         elif "Gripper Close" in cmd:
