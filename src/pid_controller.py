@@ -105,13 +105,13 @@ class WallCenteringPID:
         nominal_side_dist_mm: float = DEFAULT_NOMINAL_SIDE_MM,
         tolerance_mm: float = DEADBAND_TOLERANCE_MM,
         front_target_mm: float = FRONT_WALL_STOP_MM,
-        lateral_kp: float = 0.003,  # Converts mm error to m/s vy (e.g. 50mm error -> 0.15 m/s)
-        lateral_ki: float = 0.0005,
-        lateral_kd: float = 0.0008,
-        max_lateral_speed: float = 0.20,  # Max vy m/s
-        yaw_kp: float = 0.015,  # Converts deg error to deg/s vz
-        yaw_kd: float = 0.002,
-        max_yaw_speed: float = 30.0,  # Max vz deg/s
+        lateral_kp: float = 0.0018,  # Smooth lateral centering (50mm error -> ~0.09 m/s)
+        lateral_ki: float = 0.0001,
+        lateral_kd: float = 0.0012,  # Damping to prevent oscillating across corridor
+        max_lateral_speed: float = 0.10,  # Max vy m/s (gentle correction)
+        yaw_kp: float = 0.025,  # Strong heading hold to keep robot straight
+        yaw_kd: float = 0.004,
+        max_yaw_speed: float = 25.0,  # Max vz deg/s
     ):
         self.nominal_side_dist_mm = nominal_side_dist_mm
         self.tolerance_mm = tolerance_mm
@@ -125,8 +125,8 @@ class WallCenteringPID:
                 kd=lateral_kd,
                 max_output=max_lateral_speed,
                 min_output=-max_lateral_speed,
-                integral_limit=50.0,
-                deadband=tolerance_mm,  # |error| < 20mm -> vy = 0
+                integral_limit=30.0,
+                deadband=tolerance_mm,  # |error| < 20mm (2cm) -> vy = 0
             )
         )
 
@@ -138,7 +138,7 @@ class WallCenteringPID:
                 kd=yaw_kd,
                 max_output=max_yaw_speed,
                 min_output=-max_yaw_speed,
-                deadband=1.0,  # 1 degree deadband
+                deadband=0.5,  # 0.5 degree deadband for rock-solid straight heading
             )
         )
 
@@ -174,22 +174,22 @@ class WallCenteringPID:
         if has_front:
             # Case 1: Front Wall present
             if has_left and has_right and l_mm is not None and r_mm is not None:
-                # Case 1.1: Walls on both sides -> error = L - R
-                # If L > R (robot closer to right), error > 0 -> shift left (vy > 0)
-                # If R > L (robot closer to left), error < 0 -> shift right (vy < 0)
-                error_y = l_mm - r_mm
-                case_name = "Case 1.1: Front Wall + Both Side Walls (|L-R|)"
+                # Case 1.1: Walls on both sides -> error = R - L
+                # If L < R (closer to left), error > 0 -> strafe right (vy > 0)
+                # If L > R (closer to right), error < 0 -> strafe left (vy < 0)
+                error_y = r_mm - l_mm
+                case_name = "Case 1.1: Front Wall + Both Side Walls (|L-R| < 2cm)"
                 case_id = 11
             elif has_left and l_mm is not None:
-                # Case 1.2: Left wall only -> error = L - Nominal
-                # If L > Nominal (too far from left wall), shift left (vy > 0)
-                error_y = l_mm - self.nominal_side_dist_mm
+                # Case 1.2: Left wall only -> error = Nominal - L
+                # If L < Nominal (too close to left), error > 0 -> strafe right (vy > 0)
+                error_y = self.nominal_side_dist_mm - l_mm
                 case_name = "Case 1.2: Front Wall + Left Wall Only (L +- 2cm)"
                 case_id = 12
             elif has_right and r_mm is not None:
-                # Case 1.3: Right wall only -> error = Nominal - R
-                # If R > Nominal (too far from right wall), shift right (vy < 0)
-                error_y = self.nominal_side_dist_mm - r_mm
+                # Case 1.3: Right wall only -> error = R - Nominal
+                # If R < Nominal (too close to right), error < 0 -> strafe left (vy < 0)
+                error_y = r_mm - self.nominal_side_dist_mm
                 case_name = "Case 1.3: Front Wall + Right Wall Only (R +- 2cm)"
                 case_id = 13
             else:
@@ -200,18 +200,18 @@ class WallCenteringPID:
         else:
             # Case 2: No Front Wall
             if has_left and has_right and l_mm is not None and r_mm is not None:
-                # Case 2.1: Walls on both sides -> error = L - R
-                error_y = l_mm - r_mm
-                case_name = "Case 2.1: No Front Wall + Both Side Walls (|L-R|)"
+                # Case 2.1: Walls on both sides -> error = R - L
+                error_y = r_mm - l_mm
+                case_name = "Case 2.1: No Front Wall + Both Side Walls (|L-R| < 2cm)"
                 case_id = 21
             elif has_left and l_mm is not None:
-                # Case 2.2: Left wall only -> error = L - Nominal
-                error_y = l_mm - self.nominal_side_dist_mm
+                # Case 2.2: Left wall only -> error = Nominal - L
+                error_y = self.nominal_side_dist_mm - l_mm
                 case_name = "Case 2.2: No Front Wall + Left Wall Only (L +- 2cm)"
                 case_id = 22
             elif has_right and r_mm is not None:
-                # Case 2.3: Right wall only -> error = Nominal - R
-                error_y = self.nominal_side_dist_mm - r_mm
+                # Case 2.3: Right wall only -> error = R - Nominal
+                error_y = r_mm - self.nominal_side_dist_mm
                 case_name = "Case 2.3: No Front Wall + Right Wall Only (R +- 2cm)"
                 case_id = 23
             else:

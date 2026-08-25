@@ -245,11 +245,17 @@ class RobotControllerThread(threading.Thread):
         initial_state = self.sensor_hub.get_latest_state()
         start_x, start_y = initial_state.pos_x, initial_state.pos_y
 
+        # Initialize reference heading on first grid move (always 0.0 deg relative)
+        if not hasattr(self, "_heading_initialized") or not self._heading_initialized:
+            self.target_heading_deg = 0.0
+            self._heading_initialized = True
+            print(f"  [Controller] Reference Initialized: Position (0,0), Target Heading 0.0°")
+
         self.wall_pid.reset()
         dist_traveled = 0.0
         control_loop_hz = 20.0
         dt = 1.0 / control_loop_hz
-        max_duration = (self.grid_size_m / max(0.1, self.base_speed)) * 1.8 + 1.0
+        max_duration = (self.grid_size_m / max(0.1, self.base_speed)) * 1.8 + 1.5
         t_start = time.monotonic()
 
         last_case_id = None
@@ -257,25 +263,27 @@ class RobotControllerThread(threading.Thread):
         while dist_traveled < self.grid_size_m and self._running.is_set():
             loop_t0 = time.monotonic()
             if (loop_t0 - t_start) > max_duration:
-                print("  [Warning] Grid step reached timeout limit.")
+                print(f"  [Warning] Grid step reached timeout limit ({max_duration:.1f}s).")
                 break
 
             # 1. Pull clean, pre-filtered sensor snapshot from Thread 1 (Zero hardware overhead)
             state = self.sensor_hub.get_latest_state()
 
-            # 2. Update distance traveled via odometry
+            # 2. Update forward distance traveled along target heading (60 cm / 0.60 m)
             dx = state.pos_x - start_x
             dy = state.pos_y - start_y
-            dist_traveled = math.sqrt(dx * dx + dy * dy)
+            rad = math.radians(self.target_heading_deg)
+            forward_step_m = dx * math.cos(rad) + dy * math.sin(rad)
+            dist_traveled = max(0.0, forward_step_m if not self.mock_mode else math.sqrt(dx * dx + dy * dy))
 
-            # Check remaining distance to grid cell boundary
+            # 3. Check remaining distance to grid cell boundary (60 cm)
             rem_dist = self.grid_size_m - dist_traveled
             cur_vx = self.base_speed
-            if rem_dist < 0.15:
-                # Decelerate smoothly at end of cell
-                cur_vx = max(0.08, self.base_speed * (rem_dist / 0.15))
+            if rem_dist < 0.12:
+                # Decelerate smoothly at end of 60cm cell
+                cur_vx = max(0.08, self.base_speed * (rem_dist / 0.12))
 
-            # 3. Compute PID control commands for the 8 wall cases
+            # 4. Compute PID control commands for the 8 wall cases
             vx, vy, vz, case_name, case_id, err_y = self.wall_pid.compute_control_speeds(
                 state=state,
                 target_yaw_deg=self.target_heading_deg,
@@ -287,14 +295,16 @@ class RobotControllerThread(threading.Thread):
                 print(f"  [PID Centering] {case_name} | Lat Err: {err_y:+.1f} mm | vy: {vy:+.2f} m/s | L: {state.sharp_left_mm} mm | R: {state.sharp_right_mm} mm")
                 last_case_id = case_id
 
-            # 4. Drive chassis holonomically (Forward vx + Lateral correction vy + Yaw lock vz)
+            # 5. Drive chassis holonomically (Forward vx + Lateral correction vy + Yaw lock vz)
             self.drive_speed(vx=vx, vy=vy, vz=vz)
 
             # Check if front wall reached before full 60cm (safety)
+            # Only stop on ToF if robot has already moved at least 0.35m or if dangerously close (< 90mm)
             has_front, _, _ = self.wall_pid.classify_wall_state(state)
-            if has_front and state.tof_filtered_mm is not None and state.tof_filtered_mm <= self.wall_pid.front_target_mm:
-                print(f"  [Front Wall Reach] Stopped at ToF={state.tof_filtered_mm:.1f} mm (Target: {self.wall_pid.front_target_mm} mm)")
-                break
+            if has_front and state.tof_filtered_mm is not None:
+                if (dist_traveled >= 0.35 and state.tof_filtered_mm <= self.wall_pid.front_target_mm) or (state.tof_filtered_mm < 90.0):
+                    print(f"  [Front Wall Reach] Stopped at ToF={state.tof_filtered_mm:.1f} mm (Target: {self.wall_pid.front_target_mm} mm)")
+                    break
 
             # Sleep remaining loop dt
             loop_elapsed = time.monotonic() - loop_t0
@@ -308,7 +318,8 @@ class RobotControllerThread(threading.Thread):
 
         # Log completion state
         end_state = self.sensor_hub.get_latest_state()
-        print(f"  [Grid Step Done] Position ({end_state.pos_x:.2f}, {end_state.pos_y:.2f}) | Sharp L: {end_state.sharp_left_mm} mm | R: {end_state.sharp_right_mm} mm | Diff: {end_state.sharp_diff_mm:.1f} mm | ToF: {end_state.tof_filtered_mm} mm")
+        diff_str = f"{end_state.sharp_diff_mm:+.1f} mm" if (end_state.wall_left_detected and end_state.wall_right_detected) else "N/A"
+        print(f"  [Grid Step {step_idx}/{total_steps} Done] Local Pos: ({end_state.pos_x:+.2f}m, {end_state.pos_y:+.2f}m) | Yaw: {end_state.yaw:+.1f}° | Sharp L: {end_state.sharp_left_mm} mm | R: {end_state.sharp_right_mm} mm | Diff: {diff_str} | ToF: {end_state.tof_filtered_mm} mm")
 
     def move_forward_grid(self, cells: int = 1):
         """Executes multi-cell forward motion grid-by-grid with closed-loop PID centering."""

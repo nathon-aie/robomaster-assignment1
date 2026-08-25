@@ -225,14 +225,17 @@ class RobotSensorSnapshot:
     tof_valid: bool = False
 
     # IMU / Attitude (degrees)
-    yaw: float = 0.0
+    yaw: float = 0.0      # Relative locked yaw (starts at 0.0 deg on startup)
+    yaw_raw: float = 0.0  # Raw IMU yaw from robot SDK
     pitch: float = 0.0
     roll: float = 0.0
 
     # Chassis Odometry Position (m)
-    pos_x: float = 0.0
-    pos_y: float = 0.0
+    pos_x: float = 0.0      # Local zeroed X (starts at 0.000 m along initial forward axis)
+    pos_y: float = 0.0      # Local zeroed Y (starts at 0.000 m along initial lateral axis)
     pos_z: float = 0.0
+    pos_x_raw: float = 0.0  # Raw SDK world X
+    pos_y_raw: float = 0.0  # Raw SDK world Y
 
     # Chassis Velocity (m/s)
     vel_vx: float = 0.0
@@ -279,11 +282,14 @@ class RobotSensorSnapshot:
             "tof_filtered_mm": self.tof_filtered_mm,
             "tof_valid": self.tof_valid,
             "yaw": self.yaw,
+            "yaw_raw": self.yaw_raw,
             "pitch": self.pitch,
             "roll": self.roll,
             "pos_x": self.pos_x,
             "pos_y": self.pos_y,
             "pos_z": self.pos_z,
+            "pos_x_raw": self.pos_x_raw,
+            "pos_y_raw": self.pos_y_raw,
             "vel_vx": self.vel_vx,
             "vel_vy": self.vel_vy,
             "gripper_status": self.gripper_status,
@@ -395,6 +401,8 @@ class SensorCollectorThread(threading.Thread):
         self._impact: bool = False
         self._slip: bool = False
         self._gripper_status: str = "normal"
+        self._initial_yaw_offset: Optional[float] = None
+        self._initial_pos_offset: Optional[Tuple[float, float]] = None
 
     # SDK Subscription Callbacks
     def _cb_distance(self, distance_info):
@@ -530,6 +538,28 @@ class SensorCollectorThread(threading.Thread):
         self._running.clear()
         self.unsubscribe_all()
 
+    def reset_heading_zero(self, yaw_deg: Optional[float] = None):
+        """Sets the zero reference angle to current yaw or specified degree."""
+        with self._raw_lock:
+            if yaw_deg is not None:
+                self._initial_yaw_offset = yaw_deg
+            elif self._raw_attitude[0] is not None:
+                self._initial_yaw_offset = self._raw_attitude[0]
+            else:
+                self._initial_yaw_offset = 0.0
+        print(f"[SensorCollectorThread] Heading Zero Reset to {self._initial_yaw_offset:.2f}°")
+
+    def reset_position_zero(self, pos_xy: Optional[Tuple[float, float]] = None):
+        """Sets origin (0, 0) to current position or specified coordinates."""
+        with self._raw_lock:
+            if pos_xy is not None:
+                self._initial_pos_offset = pos_xy
+            elif self._raw_position is not None and len(self._raw_position) >= 2:
+                self._initial_pos_offset = (self._raw_position[0], self._raw_position[1])
+            else:
+                self._initial_pos_offset = (0.0, 0.0)
+        print(f"[SensorCollectorThread] Position Zero Reset to ({self._initial_pos_offset[0]:.3f}, {self._initial_pos_offset[1]:.3f}) -> (0, 0)")
+
     def run(self):
         """Thread 1 main execution loop."""
         while self._running.is_set():
@@ -553,6 +583,34 @@ class SensorCollectorThread(threading.Thread):
                 impact = self._impact
                 slip = self._slip
                 grip = self._gripper_status
+
+            # Heading (Yaw) Zeroing: Locks initial robot heading to 0.0 deg
+            raw_yaw = att[0] if att and len(att) > 0 else 0.0
+            if raw_yaw is not None and math.isfinite(raw_yaw):
+                if self._initial_yaw_offset is None:
+                    self._initial_yaw_offset = raw_yaw
+                    print(f"[Thread 1 Sensor] Auto-Locked Initial Heading: {self._initial_yaw_offset:.2f}° -> 0.0°")
+                norm_yaw = (raw_yaw - self._initial_yaw_offset + 180.0) % 360.0 - 180.0
+            else:
+                norm_yaw = 0.0
+
+            # Position (0, 0) Zeroing: Locks initial robot position to (0, 0)
+            raw_x = pos[0] if pos and len(pos) > 0 else 0.0
+            raw_y = pos[1] if pos and len(pos) > 1 else 0.0
+            if self.mock_mode:
+                local_x = raw_x
+                local_y = raw_y
+            else:
+                if self._initial_pos_offset is None:
+                    self._initial_pos_offset = (raw_x, raw_y)
+                    print(f"[Thread 1 Sensor] Auto-Locked Initial Position: ({raw_x:.3f}, {raw_y:.3f}) -> (0.000, 0.000)")
+
+                dx_raw = raw_x - self._initial_pos_offset[0]
+                dy_raw = raw_y - self._initial_pos_offset[1]
+                # Rotate world odometry into robot's initial baseline frame (where forward = +X)
+                theta0_rad = math.radians(self._initial_yaw_offset if self._initial_yaw_offset is not None else 0.0)
+                local_x = dx_raw * math.cos(theta0_rad) + dy_raw * math.sin(theta0_rad)
+                local_y = -dx_raw * math.sin(theta0_rad) + dy_raw * math.cos(theta0_rad)
 
             # Filtering raw signals
             filt_sl, sl_valid = self.sharp_left_filter.filter(raw_sl)
@@ -598,12 +656,15 @@ class SensorCollectorThread(threading.Thread):
                 tof_raw=raw_tof,
                 tof_filtered_mm=mm_tof,
                 tof_valid=tof_valid and (mm_tof is not None),
-                yaw=att[0],
+                yaw=norm_yaw,
+                yaw_raw=raw_yaw,
                 pitch=att[1],
                 roll=att[2],
-                pos_x=pos[0],
-                pos_y=pos[1],
+                pos_x=local_x,
+                pos_y=local_y,
                 pos_z=pos[2],
+                pos_x_raw=raw_x,
+                pos_y_raw=raw_y,
                 vel_vx=vel[0],
                 vel_vy=vel[1],
                 vel_vz=vel[2],

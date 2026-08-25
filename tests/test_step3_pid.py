@@ -46,7 +46,7 @@ class TestStep3WallCentering8Cases(unittest.TestCase):
     # 1. Front Wall Cases
     def test_case_1_1_front_and_both_walls(self):
         """Case 1.1: Front Wall + Both Side Walls (|L-R| < 2cm)."""
-        # Robot shifted right (L=160, R=120) -> diff = +40mm (> 20mm deadband)
+        # Robot shifted right (L=160, R=120) -> error = R - L = -40mm (strafe left, vy < 0)
         snap = RobotSensorSnapshot(
             sharp_left_mm=160.0,
             sharp_left_valid=True,
@@ -57,7 +57,7 @@ class TestStep3WallCentering8Cases(unittest.TestCase):
         )
         err_y, case_name, case_id = self.wall_pid.compute_lateral_error(snap)
         self.assertEqual(case_id, 11)
-        self.assertEqual(err_y, 40.0)
+        self.assertEqual(err_y, -40.0)
 
         # Centered: |L-R| = 10mm (< 20mm) -> deadband gives vy = 0
         snap_centered = RobotSensorSnapshot(
@@ -70,12 +70,12 @@ class TestStep3WallCentering8Cases(unittest.TestCase):
         )
         _, vy, _, _, case_id, err_centered = self.wall_pid.compute_control_speeds(snap_centered, 0.0)
         self.assertEqual(case_id, 11)
-        self.assertEqual(err_centered, 10.0)
+        self.assertEqual(err_centered, -10.0)
         self.assertEqual(vy, 0.0)  # within deadband
 
     def test_case_1_2_front_and_left_wall(self):
         """Case 1.2: Front Wall + Left Wall Only (L +- 2cm)."""
-        # L is 180mm, nominal is 140mm -> err = +40mm
+        # L is 180mm, nominal is 140mm -> error = Nominal - L = 140 - 180 = -40mm (strafe left)
         snap = RobotSensorSnapshot(
             sharp_left_mm=180.0,
             sharp_left_valid=True,
@@ -86,11 +86,11 @@ class TestStep3WallCentering8Cases(unittest.TestCase):
         )
         err_y, case_name, case_id = self.wall_pid.compute_lateral_error(snap)
         self.assertEqual(case_id, 12)
-        self.assertEqual(err_y, 40.0)
+        self.assertEqual(err_y, -40.0)
 
     def test_case_1_3_front_and_right_wall(self):
         """Case 1.3: Front Wall + Right Wall Only (R +- 2cm)."""
-        # R is 100mm, nominal is 140mm -> robot too close to right, error = 140 - 100 = +40mm (shift left)
+        # R is 100mm, nominal is 140mm -> robot too close to right, error = R - Nominal = 100 - 140 = -40mm (strafe left)
         snap = RobotSensorSnapshot(
             sharp_left_mm=500.0,  # Open left
             sharp_left_valid=False,
@@ -101,7 +101,7 @@ class TestStep3WallCentering8Cases(unittest.TestCase):
         )
         err_y, case_name, case_id = self.wall_pid.compute_lateral_error(snap)
         self.assertEqual(case_id, 13)
-        self.assertEqual(err_y, 40.0)
+        self.assertEqual(err_y, -40.0)
 
     def test_case_1_4_front_and_no_side_walls(self):
         """Case 1.4: Front Wall + No Side Walls."""
@@ -120,6 +120,7 @@ class TestStep3WallCentering8Cases(unittest.TestCase):
     # 2. No Front Wall Cases
     def test_case_2_1_no_front_and_both_walls(self):
         """Case 2.1: No Front Wall + Both Side Walls (|L-R| < 2cm)."""
+        # L=110, R=170 (closer to left) -> error = R - L = 170 - 110 = +60mm (strafe right, vy > 0)
         snap = RobotSensorSnapshot(
             sharp_left_mm=110.0,
             sharp_left_valid=True,
@@ -130,10 +131,11 @@ class TestStep3WallCentering8Cases(unittest.TestCase):
         )
         err_y, case_name, case_id = self.wall_pid.compute_lateral_error(snap)
         self.assertEqual(case_id, 21)
-        self.assertEqual(err_y, -60.0)
+        self.assertEqual(err_y, 60.0)
 
     def test_case_2_2_no_front_and_left_wall(self):
         """Case 2.2: No Front Wall + Left Wall Only."""
+        # L=120, Nominal=140 -> error = Nominal - L = 140 - 120 = +20mm (strafe right)
         snap = RobotSensorSnapshot(
             sharp_left_mm=120.0,
             sharp_left_valid=True,
@@ -144,11 +146,11 @@ class TestStep3WallCentering8Cases(unittest.TestCase):
         )
         err_y, case_name, case_id = self.wall_pid.compute_lateral_error(snap)
         self.assertEqual(case_id, 22)
-        # L=120, Nominal=140 -> error = 120-140 = -20mm (at boundary)
-        self.assertEqual(err_y, -20.0)
+        self.assertEqual(err_y, 20.0)
 
     def test_case_2_3_no_front_and_right_wall(self):
         """Case 2.3: No Front Wall + Right Wall Only."""
+        # R=180, Nominal=140 -> error = R - Nominal = 180 - 140 = +40mm (strafe right)
         snap = RobotSensorSnapshot(
             sharp_left_mm=600.0,
             sharp_left_valid=False,
@@ -159,8 +161,7 @@ class TestStep3WallCentering8Cases(unittest.TestCase):
         )
         err_y, case_name, case_id = self.wall_pid.compute_lateral_error(snap)
         self.assertEqual(case_id, 23)
-        # R=180, Nominal=140 -> error = 140-180 = -40mm (shift right)
-        self.assertEqual(err_y, -40.0)
+        self.assertEqual(err_y, 40.0)
 
     def test_case_2_4_open_space(self):
         """Case 2.4: Open Space."""

@@ -138,11 +138,18 @@ def load_robot_sdk():
             pass
 
         def decode(self, *args, **kwargs):
-            raise RuntimeError("RoboMaster camera codec libmedia_codec is unavailable; sensor calibration does not use camera streaming")
+            return None
+
+        def stop(self, *args, **kwargs):
+            pass
+
+        def display(self, *args, **kwargs):
+            pass
 
     codec = types.ModuleType("libmedia_codec")
     codec.H264Decoder = _NoCameraCodec
     codec.OpusDecoder = _NoCameraCodec
+    codec.AudioDecoder = _NoCameraCodec
     sys.modules["libmedia_codec"] = codec
 
     try:
