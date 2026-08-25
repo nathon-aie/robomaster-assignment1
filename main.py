@@ -40,6 +40,43 @@ if str(_SRC_DIR) not in sys.path:
 from src.robot_system import RobotSystem
 from src.telemetry import TelemetryAnalyzer
 
+import json
+from typing import List
+
+def parse_custom_commands(cmd_input: str) -> List[str]:
+    """Parses arbitrary command string or JSON list into robot controller commands."""
+    if not cmd_input:
+        return []
+    s = cmd_input.strip()
+    if s.startswith("["):
+        try:
+            return json.loads(s)
+        except Exception:
+            pass
+
+    raw_items = [c.strip() for c in s.replace(";", ",").split(",") if c.strip()]
+    parsed = []
+    for item in raw_items:
+        low = item.lower()
+        if any(w in low for w in ("fwd", "forward", "move", "cell")):
+            nums = [int(tok) for tok in item.split() if tok.isdigit()]
+            cells = nums[0] if nums else 1
+            parsed.append(f"Move Forward: {cells} cells")
+        elif "left" in low:
+            parsed.append("Turn Left (90 deg)")
+        elif "right" in low:
+            parsed.append("Turn Right (90 deg)")
+        elif "around" in low or "180" in low:
+            parsed.append("Turn Around (180 deg)")
+        elif "open" in low:
+            parsed.append("Gripper Open")
+        elif "close" in low:
+            parsed.append("Gripper Close")
+        else:
+            parsed.append(item)
+    return parsed
+
+
 def cmd_simulate(args):
     print("=" * 65)
     print("🤖 STARTING STEP 3 MULTI-THREADING SIMULATION (PID GRID NAVIGATION)")
@@ -51,6 +88,10 @@ def cmd_simulate(args):
     )
     sys_runner.connect_robot()
     sys_runner.setup_threads(plan_file=args.plan)
+
+    if hasattr(args, "commands") and args.commands and sys_runner.thread_2_controller:
+        custom_cmds = parse_custom_commands(args.commands)
+        sys_runner.thread_2_controller.set_commands(custom_cmds)
 
     if hasattr(args, "speed") and sys_runner.thread_2_controller:
         sys_runner.thread_2_controller.base_speed = args.speed
@@ -86,6 +127,10 @@ def cmd_run(args):
         return 1
 
     sys_runner.setup_threads(plan_file=args.plan)
+
+    if hasattr(args, "commands") and args.commands and sys_runner.thread_2_controller:
+        custom_cmds = parse_custom_commands(args.commands)
+        sys_runner.thread_2_controller.set_commands(custom_cmds)
 
     if hasattr(args, "speed") and sys_runner.thread_2_controller:
         sys_runner.thread_2_controller.base_speed = args.speed
@@ -248,6 +293,7 @@ def main():
     # 1. Run live
     run_p = subparsers.add_parser("run", help="Run live robot navigation with Step 3 PID")
     run_p.add_argument("--plan", default="data/robot_map_plan.json", help="Path to map plan json")
+    run_p.add_argument("--commands", default="", help="Custom comma-separated command sequence (e.g. 'fwd 1, left, fwd 1')")
     run_p.add_argument("--calibration", default="calibration_output/calibration.json")
     run_p.add_argument("--conn-type", choices=("ap", "sta"), default="ap")
     run_p.add_argument("--rate", type=float, default=20.0, help="Sensor collection rate Hz")
@@ -259,6 +305,7 @@ def main():
     # 2. Simulate
     sim_p = subparsers.add_parser("simulate", help="Run simulation / dry-run with Step 3 PID")
     sim_p.add_argument("--plan", default="data/robot_map_plan.json", help="Path to map plan json")
+    sim_p.add_argument("--commands", default="", help="Custom comma-separated command sequence (e.g. 'fwd 1, left, fwd 1')")
     sim_p.add_argument("--calibration", default="calibration_output/calibration.json")
     sim_p.add_argument("--rate", type=float, default=20.0, help="Sensor collection rate Hz")
     sim_p.add_argument("--speed", type=float, default=0.25, help="Base cruising speed (m/s)")

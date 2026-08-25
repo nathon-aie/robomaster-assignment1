@@ -39,14 +39,15 @@ class MockRobotActuators:
         steps = max(2, int(duration * 20))
         dx = x / steps
         dy = y / steps
-        dz = z / steps
+        yaw_change = 180.0 if abs(z) == 180.0 else -z
+        dz = yaw_change / steps
 
         step_delay = duration / steps
         for _ in range(steps):
             time.sleep(step_delay)
             self.cur_x += dx
             self.cur_y += dy
-            self.cur_yaw = (self.cur_yaw + dz) % 360.0
+            self.cur_yaw = (self.cur_yaw + dz + 180.0) % 360.0 - 180.0
             if self.collector:
                 self.collector.inject_mock_data(
                     sharp_left_adc=350.0,
@@ -65,7 +66,7 @@ class MockRobotActuators:
         rad = math.radians(self.cur_yaw)
         self.cur_x += (x * math.cos(rad) - y * math.sin(rad)) * dt
         self.cur_y += (x * math.sin(rad) + y * math.cos(rad)) * dt
-        self.cur_yaw = (self.cur_yaw + z * dt) % 360.0
+        self.cur_yaw = (self.cur_yaw - z * dt + 180.0) % 360.0 - 180.0
 
         if self.collector:
             self.collector.inject_mock_data(
@@ -138,6 +139,7 @@ class RobotControllerThread(threading.Thread):
         self.current_action: str = "IDLE"
         self.current_step: int = 0
         self.plan_completed: bool = False
+        self.step_pause_sec: float = 0.05 if mock_mode else 1.0  # 1.0s pause between states on live robot
 
     def load_plan_from_file(self, json_path: str):
         """Loads execution plan commands from robot_map_plan.json."""
@@ -245,12 +247,6 @@ class RobotControllerThread(threading.Thread):
         initial_state = self.sensor_hub.get_latest_state()
         start_x, start_y = initial_state.pos_x, initial_state.pos_y
 
-        # Initialize reference heading on first grid move (always 0.0 deg relative)
-        if not hasattr(self, "_heading_initialized") or not self._heading_initialized:
-            self.target_heading_deg = 0.0
-            self._heading_initialized = True
-            print(f"  [Controller] Reference Initialized: Position (0,0), Target Heading 0.0°")
-
         self.wall_pid.reset()
         dist_traveled = 0.0
         control_loop_hz = 20.0
@@ -328,11 +324,15 @@ class RobotControllerThread(threading.Thread):
             if not self._running.is_set():
                 break
             self.navigate_single_grid_step(step_idx=i, total_steps=cells)
-            time.sleep(0.1)
+            if i < cells and self.step_pause_sec > 0:
+                print(f"[Controller] ⏸️ Pausing {self.step_pause_sec:.1f}s before next grid step...")
+                time.sleep(self.step_pause_sec)
 
     def turn_to_relative(self, deg: float, speed: float = 45.0):
         """Closed-loop relative in-place turn (+90 Left, -90 Right, 180 Around)."""
-        self.target_heading_deg = (self.target_heading_deg + deg + 180.0) % 360.0 - 180.0
+        # In DJI SDK: z=+90 rotates CCW (yaw becomes -90°), z=-90 rotates CW (yaw becomes +90°)
+        expected_yaw_delta = -deg if abs(deg) <= 90.0 else deg
+        self.target_heading_deg = (self.target_heading_deg + expected_yaw_delta + 180.0) % 360.0 - 180.0
         self.current_action = f"TURN_{deg:+.0f}_DEG"
         dir_name = "Left (เลี้ยวซ้าย z=+90)" if deg > 0 else ("Right (เลี้ยวขวา z=-90)" if deg < 0 else "Around (กลับหลัง z=180)")
         print(f"\n[Controller] 🔄 Executing Turn {dir_name}: z={deg:+.0f}° -> Target Heading: {self.target_heading_deg:.0f}°...")
@@ -347,13 +347,18 @@ class RobotControllerThread(threading.Thread):
             action = self.robot.chassis.move(x=0, y=0, z=deg, z_speed=speed)
             action.wait_for_completed()
 
-        # Stop chassis and reset PID states cleanly (prevent post-turn jerking/twitching)
+        # Stop chassis and reset PID states cleanly
         self.stop_chassis()
         self.wall_pid.reset()
         time.sleep(0.20)
 
+        # Snap target heading to nearest 90-deg grid axis of current yaw
         end_state = self.sensor_hub.get_latest_state()
-        print(f"[Controller] ✅ Turn Completed: Current Yaw = {end_state.yaw:+.1f}° (Target = {self.target_heading_deg:.0f}°)\n")
+        if not self.mock_mode and end_state.yaw is not None:
+            snapped_target = round(end_state.yaw / 90.0) * 90.0
+            self.target_heading_deg = (snapped_target + 180.0) % 360.0 - 180.0
+
+        print(f"[Controller] ✅ Turn Completed: Current Yaw = {end_state.yaw:+.1f}° (Target Grid Heading = {self.target_heading_deg:.0f}°)\n")
 
     def turn_left(self, deg: float = 90.0, speed: float = 45.0):
         """เลี้ยวซ้าย z = +90 องศา."""
@@ -410,7 +415,10 @@ class RobotControllerThread(threading.Thread):
         else:
             print(f"  [Warning] Unknown command format: {cmd}")
 
-        time.sleep(0.1)
+        # Sleep 1.0s before proceeding to next state
+        if self.step_pause_sec > 0:
+            print(f"[Controller] ⏸️ Pausing {self.step_pause_sec:.1f}s before next state...")
+            time.sleep(self.step_pause_sec)
 
     def run(self):
         """Thread 2 main execution loop."""
