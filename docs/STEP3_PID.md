@@ -74,31 +74,41 @@
 
 ### 1. ทดสอบเดินเฉพาะ 1 ช่อง Grid (Step Test)
 ใช้สำหรับวางหุ่นในสนามจริงเพื่อดูการปรับกึ่งกลางของหุ่นยนต์:
-```bash
+```cmd
 # ทดสอบเดิน 1 ช่องกับหุ่นจริง (AP mode)
-.venv/bin/python main.py step-test --cells 1 --conn-type ap
+python main.py step-test --cells 1
 
 # หรือทดสอบเดิน 2 ช่อง
-.venv/bin/python main.py step-test --cells 2 --conn-type ap
+python main.py step-test --cells 2
 ```
 
-### 2. รันตามแผนที่ [data/robot_map_plan.json](../data/robot_map_plan.json) พร้อมระบบ PID
-```bash
+### 2. ทดสอบการหมุนตัวในสนามจริง (Turn Test)
+ทดสอบการเลี้ยว 90° หรือกลับหลัง 180° พร้อม IMU Heading Correction:
+```cmd
+# เลี้ยวขวา 90 องศา
+python main.py turn-test --direction right
+
+# เลี้ยวซ้าย 90 องศา
+python main.py turn-test --direction left
+
+# กลับหลังหัน 180 องศา
+python main.py turn-test --direction around
+```
+
+### 3. รันตามแผนที่ [data\robot_map_plan.json](../data\robot_map_plan.json) พร้อมระบบ PID
+```cmd
 # รันหุ่นยนต์จริง
-.venv/bin/python main.py run --conn-type ap --plan data/robot_map_plan.json
+python main.py run --plan data\robot_map_plan.json
 
 # หรือรันในโหมดจำลอง (Simulation)
-.venv/bin/python main.py simulate --plan data/robot_map_plan.json
+python main.py simulate --plan data\robot_map_plan.json
 ```
 
-### 3. ปรับจูน Parameter เพิ่มเติม
+### 4. พารามิเตอร์ PID และการปรับจูน (PID Parameters)
+- `kp_y` (default `0.0018`): Gain ปรับความเร็วเบี่ยงข้าง ($v_y$) ตามผลต่างเซนเซอร์ Sharp
+- `kp_yaw` (default `0.015`): Gain ปรับความเร็วเชิงมุม ($v_z$) เพื่อล็อกองศา Yaw ให้ตรงตามแกนตาราง
 - `--speed`: ความเร็วเดินหน้าปกติ (default: `0.25` m/s)
 - `--nominal-side`: ระยะห่างเป้าหมายจากหุ่นถึงกำแพงเดี่ยว (default: `140.0` mm)
-```bash
-.venv/bin/python main.py run --conn-type ap --speed 0.20 --nominal-side 140.0
-```
-
-### 4. รันชุดทดสอบความถูกต้องของ PID (11 Tests)
-```bash
-.venv/bin/python -m unittest tests/test_step3_pid.py
+```cmd
+python main.py run --speed 0.20 --nominal-side 140.0
 ```

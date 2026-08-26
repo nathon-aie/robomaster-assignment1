@@ -51,9 +51,9 @@
                                         v (เมื่อจบการทำงาน)
 +-------------------------------------------------------------------------------+
 |                      Telemetry Analyzer & Exporter                            |
-|  - telemetry_logs/run1/run1.json (ข้อมูลดิบ + สถิติสรุป)                      |
-|  - telemetry_logs/run1/run1.csv (ตาราง Time-series สำหรับนำเข้า Excel)        |
-|  - telemetry_logs/run1/run1_plot.png (กราฟวิเคราะห์ 4 มิติ)                   |
+|  - telemetry_logs\run1\run1.json (ข้อมูลดิบ + สถิติสรุป)                      |
+|  - telemetry_logs\run1\run1.csv (ตาราง Time-series สำหรับนำเข้า Excel)        |
+|  - telemetry_logs\run1\run1_plot.png (กราฟวิเคราะห์ 4 มิติ)                   |
 +-------------------------------------------------------------------------------+
 ```
 
@@ -62,41 +62,35 @@
 ## 📁 ไฟล์สำคัญในระบบ
 
 - [src/sensor_pipeline.py](../src/sensor_pipeline.py): ฟิลเตอร์กรองสัญญาณ (Median, EMA, Outlier), ตัวแปลงสมการ [calibration.json](../calibration_output/calibration.json), โครงสร้าง `SensorHub` และ `SensorCollectorThread` (Thread 1)
-- [src/robot_controller.py](../src/robot_controller.py): `RobotControllerThread` (Thread 2), รองรับการอ่านและรันคำสั่งจาก [data/robot_map_plan.json](../data/robot_map_plan.json)
+- [src/robot_controller.py](../src/robot_controller.py): `RobotControllerThread` (Thread 2), รองรับการอ่านและรันคำสั่งจาก [data\robot_map_plan.json](../data\robot_map_plan.json)
 - [src/telemetry.py](../src/telemetry.py): ตัวบันทึกข้อมูล Time-series และตัววิเคราะห์สถิติหลังรันเสร็จพร้อมพลอตรายงาน
 - [src/robot_system.py](../src/robot_system.py): ตัวจัดการหลัก (Master Orchestrator) จัดการ Lifecycle ทั้งสอง Thread และ RoboMaster SDK
 - [main.py](../main.py): Master CLI Runner สำหรับสั่งรันหุ่นจริง, โหมดจำลอง, ตรวจดูค่า Sensor สด, หรือวิเคราะห์ Log
-- [tests/test_multithreading.py](../tests/test_multithreading.py): Automated Unit & Integration Tests สำหรับ Step 2
 
 ---
 
 ## 🚀 วิธีการใช้งาน (Usage Guide)
 
-### 1. ทดสอบรัน Simulation ด้วยแผนที่ `data/robot_map_plan.json`
+### 1. ทดสอบรัน Simulation ด้วยแผนที่ `data\robot_map_plan.json`
 ใช้ทดสอบความถูกต้องของ 2 Threads, แผนการเดิน, และการบันทึก Log โดยไม่ต้องเชื่อมต่อหุ่นจริง:
-```bash
-.venv/bin/python main.py simulate --plan data/robot_map_plan.json
+```cmd
+python main.py simulate --plan data\robot_map_plan.json
 ```
 
 ### 2. รันหุ่นยนต์จริงกับ RoboMaster EP
 เชื่อมต่อคอมพิวเตอร์เข้ากับ Wi-Fi AP ของ RoboMaster EP แล้วรัน:
-```bash
-.venv/bin/python main.py run --conn-type ap --plan data/robot_map_plan.json
+```cmd
+python main.py run --conn-type ap --plan data\robot_map_plan.json
 ```
 
 ### 3. มอนิเตอร์ค่า Sensor สดจาก Thread 1 (Live Monitor)
 แสดงข้อมูลระยะ Sharp L/R, ToF, Yaw, และการตรวจจับกำแพงแบบ Real-time:
-```bash
-.venv/bin/python main.py monitor --conn-type ap
+```cmd
+python main.py monitor --conn-type ap
 ```
-*(หรือทดสอบดูค่าแบบ mock: `.venv/bin/python main.py monitor --mock`)*
+*(หรือทดสอบดูค่าแบบ mock: `python main.py monitor --mock`)*
 
 ### 4. วิเคราะห์และพลอตกราฟข้อมูลหลังการรัน (Post-run Analysis)
-```bash
-.venv/bin/python main.py analyze telemetry_logs/run1
-```
-
-### 5. รันทดสอบ Unit Tests ของ Step 2
-```bash
-.venv/bin/python -m unittest tests/test_multithreading.py
+```cmd
+python main.py analyze telemetry_logs\run1
 ```
