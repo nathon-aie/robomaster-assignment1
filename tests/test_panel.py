@@ -1562,6 +1562,52 @@ class TestCarryMission(unittest.TestCase):
         finally:
             os.unlink(path)
 
+    def test_marking_an_object_puts_one_in_the_simulated_world(self):
+        """The Object marker is a claim about the world, so the world gets one.
+
+        Without this the simulated ToF sweeps an empty square and OBJECT PLACE
+        reports NOTHING FOUND even though the map clearly shows an object.
+        """
+        grid = open_grid(6, 6)
+        grid.start = (0, 0)
+        grid.robot_cell = (0, 0)
+        grid.robot_dir = 1
+        grid.object_cell = (5, 2)          # marker only - no grid.objects entry
+        self.assertEqual(grid.objects, set())
+
+        controller = self._controller(grid)
+        try:
+            self.assertTrue(controller.connect()[0])
+            self.assertIn((5, 2), controller.ground_truth.objects)
+
+            self.assertTrue(controller.start_pickup_mission())
+            self._run_mission(controller)
+            self.assertEqual(controller.navigation_status, "HOLDING")
+            self.assertTrue(controller.robot.carrying)
+        finally:
+            controller.shutdown()
+
+    def test_object_tool_places_a_real_object(self):
+        """Clicking with the Object tool marks it and puts one there."""
+        import pygame
+        from src.panel.ui.map_view import MapView, TOOL_OBJECT
+
+        grid = open_grid(6, 6)
+        view = MapView((0, 0, 400, 400))
+        view.layout(grid)
+        view.tool = TOOL_OBJECT
+        centre = view.cell_center_px(3, 2)
+        click = pygame.event.Event(pygame.MOUSEBUTTONDOWN, button=1,
+                                   pos=(int(centre[0]), int(centre[1])))
+        view.handle_event(click, grid)
+        self.assertEqual(grid.object_cell, (3, 2))
+        self.assertIn((3, 2), grid.objects)
+
+        # Clicking the same square again clears both.
+        view.handle_event(click, grid)
+        self.assertIsNone(grid.object_cell)
+        self.assertNotIn((3, 2), grid.objects)
+
     def test_delivery_needs_a_place_point(self):
         grid = self._field()
         grid.delivery_cell = None
@@ -1874,6 +1920,72 @@ class TestDashboard(unittest.TestCase):
                     break
             self.assertTrue(found, "unexplored edge next to a known cell must be marked")
         finally:
+            pygame.quit()
+
+    def test_gripper_status_reads_empty_or_holding(self):
+        import pygame
+
+        app = self._app()
+        try:
+            app._draw()
+            self.assertEqual(app._gripper_text(), "--", "not connected yet")
+            app._do_connect()
+            self.assertEqual(app._gripper_text(), "EMPTY")
+            app.controller.robot.carrying = True
+            self.assertEqual(app._gripper_text(), "HOLDING OBJECT")
+            app._draw()
+        finally:
+            app.controller.shutdown()
+            pygame.quit()
+
+    def test_gripper_state_survives_a_short_window(self):
+        """The ROBOT STATE panel clips first, so the header must carry it."""
+        import pygame
+
+        app = self._app()
+        try:
+            app._do_connect()
+            app.controller.robot.carrying = True
+            app._draw()
+
+            def header_has(colour):
+                for x in range(0, app.screen.get_width(), 2):
+                    for y in range(0, 52, 2):
+                        if tuple(app.screen.get_at((x, y)))[:3] == colour:
+                            return True
+                return False
+
+            self.assertTrue(header_has(theme.OBJECT_CARRIED),
+                            "holding an object must show in the header")
+        finally:
+            app.controller.shutdown()
+            pygame.quit()
+
+    def test_carried_object_is_drawn_on_the_robot(self):
+        """The payload must be visible travelling, not vanish until put down."""
+        import pygame
+
+        app = self._app()
+        try:
+            app._do_connect()
+            app._draw()                       # settles the smoothed robot pose
+            view = app.map_view
+
+            def carried_pixels():
+                found = 0
+                board = view.board_rect(app.controller.map)
+                for x in range(board.x, board.right, 2):
+                    for y in range(board.y, board.bottom, 2):
+                        if tuple(app.screen.get_at((x, y)))[:3] == theme.OBJECT_CARRIED:
+                            found += 1
+                return found
+
+            self.assertEqual(carried_pixels(), 0, "nothing held yet")
+            app.controller.robot.carrying = True
+            app._draw()
+            self.assertGreater(carried_pixels(), 0, "the held object should be drawn")
+        finally:
+            app.controller.shutdown()
             pygame.quit()
 
     def test_toolbar_is_grouped_and_fits_the_window(self):

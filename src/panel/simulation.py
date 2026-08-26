@@ -273,7 +273,15 @@ class SimulationEngine(threading.Thread):
 
 
 def ground_truth_from(grid):
-    """Snapshot of an edited map, used as the hidden truth for auto-mapping."""
+    """Snapshot of an edited map, used as the hidden truth for the simulator.
+
+    The Object marker is a *statement about the world*: on the real field the
+    operator has physically stood a bottle on that square.  The simulator has
+    to materialise it, or the simulated ToF sweeps an empty square and the
+    robot reports finding nothing.
+    """
     truth = copy.deepcopy(grid)
     truth.mark_all_known()
+    if getattr(truth, "object_cell", None) is not None:
+        truth.objects.add(truth.object_cell)
     return truth

@@ -181,9 +181,14 @@ class MapView(object):
             self._emit("delivery", cell)
         elif self.tool == TOOL_OBJECT:
             if grid.object_cell == cell:
-                grid.object_cell = None      # click again to clear it
+                grid.objects.discard(cell)   # click again to clear it
+                grid.object_cell = None
             else:
+                grid.objects.discard(grid.object_cell)
                 grid.object_cell = cell
+                # The marker says an object is really standing there, so put
+                # one in the world the simulated sensors read.
+                grid.objects.add(cell)
                 if grid.get(*cell) in (WALL, OBSTACLE):
                     grid.set(cell[0], cell[1], FREE)
             self._emit("object", cell)
@@ -248,6 +253,8 @@ class MapView(object):
             if self.show_sensors:
                 self._draw_sensor_rays(surface, ctx)
             self._draw_robot(surface, state, ctx)
+            if ctx.get("carrying"):
+                self._draw_carried_object(surface)
         self._draw_hover(surface, fonts, grid, ctx)
 
     def _draw_cells(self, surface, grid, ctx):
@@ -541,6 +548,25 @@ class MapView(object):
         label = DIR_NAMES[grid.robot_dir % 4]
         draw_text(surface, fonts.tiny, label,
                   (cx, cy + radius + 2), theme.ROBOT_PLACED, align="center")
+
+    def _draw_carried_object(self, surface):
+        """The object in the gripper, drawn where the gripper actually is.
+
+        It rides just in front of the robot body and turns with it, so the map
+        shows the payload travelling rather than the object simply vanishing
+        from its square until it is put down.
+        """
+        if self._draw_col is None:
+            return
+        cx = self.origin[0] + (self._draw_col + 0.5) * self.cell_px
+        cy = self.origin[1] + (self._draw_row + 0.5) * self.cell_px
+        angle = math.radians(self._draw_heading)
+        reach = self.cell_px * 0.42
+        px = cx + math.sin(angle) * reach
+        py = cy - math.cos(angle) * reach
+        radius = max(3, int(self.cell_px * 0.13))
+        pygame.draw.circle(surface, theme.OBJECT_CARRIED, (int(px), int(py)), radius)
+        pygame.draw.circle(surface, theme.TEXT, (int(px), int(py)), radius, 2)
 
     def _draw_hover(self, surface, fonts, grid, ctx):
         if self.hover_cell is None:

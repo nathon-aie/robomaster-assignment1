@@ -42,6 +42,7 @@ CELL_GOAL = (153, 27, 27)
 CELL_CHECKPOINT = (113, 63, 18)
 CELL_OBJECT = (13, 88, 75)        # square the object to pick up stands on
 OBJECT_AIM = (94, 234, 212)       # aim point inside that square
+OBJECT_CARRIED = (34, 211, 238)   # the object while the gripper holds it
 CELL_PLACE = (76, 29, 149)        # drop-off square for the carried object
 PLACE_ARROW = (196, 181, 253)     # facing the object is released at
 CELL_FRONTIER = (56, 189, 248)

@@ -947,6 +947,7 @@ class MissionControlApp(object):
             "cell_size_m": controller.map.cell_size_m,
             "tracking_ok": controller.tracker.tracking_ok(),
             "mapping": controller.mapping_status == "ACTIVE",
+            "carrying": bool(controller.robot and controller.robot.carrying),
         })
 
         for button in self.buttons:
@@ -1006,6 +1007,13 @@ class MissionControlApp(object):
         link = "ONLINE" if self.connected() else "OFFLINE"
         x = self._chip(x, "LINK", link, theme.OK if self.connected() else theme.TEXT_FAINT)
         x = self._chip(x, "STATE", state.status, theme.status_color(state.status))
+        # The ROBOT STATE panel is the first thing to lose rows on a short
+        # window, and what the gripper holds is exactly what must not vanish.
+        if self.connected() and self.controller.robot.has_gripper():
+            holding = self.controller.robot.carrying
+            x = self._chip(x, "GRIPPER",
+                           "HOLDING OBJECT" if holding else "EMPTY",
+                           theme.OBJECT_CARRIED if holding else theme.TEXT_DIM)
         if self.controller.armed:
             x = self._chip(x, "SAFETY", "ARMED", theme.WARN)
 
@@ -1063,6 +1071,9 @@ class MissionControlApp(object):
             ("Y", "{:+.2f} m".format(state.y) if state.valid else "--"),
             ("HEADING", "{:+.1f} deg ({})".format(state.map_heading, heading_dir) if state.valid else "--"),
             ("SPEED", "{:.2f} m/s".format(state.velocity) if state.valid else "--"),
+            # High up the list on purpose: on a short window the panel
+            # clips, and what the gripper holds must not be what is lost.
+            ("GRIPPER", self._gripper_text()),
             ("CELL", str(state.cell) if state.valid else "--"),
             ("TARGET", str(state.current_target) if state.current_target else "--"),
             ("CHECKPOINT", str(state.current_checkpoint) if state.current_checkpoint else "--"),
@@ -1070,13 +1081,15 @@ class MissionControlApp(object):
             ("NAVIGATION", controller.navigation_status),
             ("MAPPING", controller.mapping_status),
             ("SENSORS", "LIVE" if controller.sensor_source is not None else "NONE"),
-            ("GRIPPER", self._gripper_text()),
         ]
         limit = rect.bottom - 26
         for key, value in rows:
             if y > limit:
                 break
-            y = draw_kv(self.screen, self.fonts, x, y, key, value, width)
+            colour = theme.TEXT
+            if key == "GRIPPER" and value == "HOLDING OBJECT":
+                colour = theme.OBJECT_CARRIED
+            y = draw_kv(self.screen, self.fonts, x, y, key, value, width, colour)
 
         age = controller.tracker.age()
         age_text = "{:.1f} s ago".format(age) if age != float("inf") else "no data"
@@ -1109,7 +1122,7 @@ class MissionControlApp(object):
             return "--"
         if not robot.has_gripper():
             return "NONE"
-        return "CARRYING" if robot.carrying else "EMPTY"
+        return "HOLDING OBJECT" if robot.carrying else "EMPTY"
 
     def _wrap_text(self, text, x, y, width, font, color, max_lines=3):
         words = str(text).split()
