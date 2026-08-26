@@ -70,12 +70,12 @@ class SimpleGripperController:
         self._move_arm(x=-100, y=0, action_name="retract arm")
         print("[action] Pick Finished\n")
 
-    def drop(self, chassis=None, back_cm=30):
+    def drop(self, chassis=None, back_cm=50):
         """Move to the drop position, release the object, and recenter."""
         print("[action] --- Start Drop ---")
         if chassis and not self.dry_run:
             print(f"[chassis] backing up {back_cm} cm...")
-            action = chassis.move(x=-(back_cm / 100.0), y=0, z=0, xy_speed=0.5)
+            action = chassis.move(x=-(back_cm / 100.0), y=-(back_cm / 100.0) + 0.325, z=0, xy_speed=0.7)
             if hasattr(action, "wait_for_completed"):
                 action.wait_for_completed()
 

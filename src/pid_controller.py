@@ -96,7 +96,7 @@ class WallCenteringPID:
     # Default parameters based on 60x60cm Grid & 25cm Robot
     # Corridor inner width ~ 525mm, Robot width 250mm -> ~137.5mm each side
     DEFAULT_NOMINAL_SIDE_MM = 140.0
-    DEADBAND_TOLERANCE_MM = 20.0  # 2 cm tolerance as specified in REQ (|L-R| < 2cm, L/R +- 2cm)
+    DEADBAND_TOLERANCE_MM = 12.5  # 2 cm tolerance as specified in REQ (|L-R| < 2cm, L/R +- 2cm)
     WALL_DETECT_THRESHOLD_MM = 260.0  # Max distance to consider side wall present
     FRONT_WALL_STOP_MM = 150.0  # Distance from front ToF to front wall at grid center
 
@@ -105,10 +105,10 @@ class WallCenteringPID:
         nominal_side_dist_mm: float = DEFAULT_NOMINAL_SIDE_MM,
         tolerance_mm: float = DEADBAND_TOLERANCE_MM,
         front_target_mm: float = FRONT_WALL_STOP_MM,
-        lateral_kp: float = 0.0018,  # Smooth lateral centering (50mm error -> ~0.09 m/s)
+        lateral_kp: float = 0.0010,  # Smooth lateral centering (50mm error -> ~0.09 m/s)
         lateral_ki: float = 0.0001,
-        lateral_kd: float = 0.0012,  # Damping to prevent oscillating across corridor
-        max_lateral_speed: float = 0.10,  # Max vy m/s (gentle correction)
+        lateral_kd: float = 0.0010,  # Damping to prevent oscillating across corridor
+        max_lateral_speed: float = 0.17,  # Max vy m/s (gentle correction)
         yaw_kp: float = 1.8,  # Active Heading Hold: 1 deg error -> 1.8 deg/s vz
         yaw_ki: float = 0.05,  # Eliminates steady-state heading drift
         yaw_kd: float = 0.15,  # Strong derivative damping against heading wobble
