@@ -129,6 +129,52 @@ class SimRobot(object):
         settled = self.transform.map_to_robot(col, row, heading)
         self._x, self._y, self._yaw = settled.x_m, settled.y_m, wrap180(settled.yaw_deg)
 
+    def nudge(self, forward_m, right_m, clearance_m=0.16):
+        """Short holonomic slide, the way ``chassis.move(x=, y=)`` drives.
+
+        The EP runs mecanum wheels, so it can strafe to line up a drop without
+        turning.  The slide is refused if it would bring the chassis closer than
+        ``clearance_m`` to a wall - fine positioning must never be what puts the
+        robot into one.  Returns the distance actually travelled.
+        """
+        with self._lock:
+            rad = math.radians(self._yaw)
+            # forward is (cos, sin) in the robot frame; right is 90 deg clockwise.
+            dx = forward_m * math.cos(rad) - right_m * math.sin(rad)
+            dy = forward_m * math.sin(rad) + right_m * math.cos(rad)
+            distance = math.hypot(dx, dy)
+            if distance < 1e-6:
+                return 0.0
+
+            steps = max(1, int(distance / 0.01))
+            moved = 0.0
+            for _ in range(steps):
+                nx = self._x + dx / steps
+                ny = self._y + dy / steps
+                if not self._clear_at(nx, ny, clearance_m):
+                    break
+                self._x, self._y = nx, ny
+                moved += distance / steps
+            return moved
+
+    def _clear_at(self, x_m, y_m, clearance_m):
+        """Whether the chassis centre at this pose keeps clear of the walls."""
+        pose = self.transform.robot_to_map(RobotPose(x_m, y_m, self._yaw))
+        cell = pose.cell
+        if not self.ground_truth.in_bounds(cell[0], cell[1]):
+            return False
+        cell_m = self.transform.cell_size_m or 0.60
+        gaps = (
+            (0, (pose.row - (cell[1] - 0.5)) * cell_m),
+            (2, ((cell[1] + 0.5) - pose.row) * cell_m),
+            (3, (pose.col - (cell[0] - 0.5)) * cell_m),
+            (1, ((cell[0] + 0.5) - pose.col) * cell_m),
+        )
+        for direction, gap in gaps:
+            if self.ground_truth.has_wall(cell[0], cell[1], direction) and gap < clearance_m:
+                return False
+        return True
+
     def step(self, dt):
         """Advances the model by ``dt`` seconds of simulated time."""
         with self._lock:

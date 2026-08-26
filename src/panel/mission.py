@@ -16,6 +16,7 @@ Safety rules enforced in this module:
 * a command is only reported as successful when the robot interface confirms it.
 """
 
+import math
 import threading
 import time
 from collections import deque
@@ -98,6 +99,14 @@ class MissionConfig:
     #: gripper (cm).  Matches the value tuned on the robot; the object ends up
     #: roughly this far behind the Place point.  0 releases on the spot.
     place_backoff_cm: float = 50.0
+    #: Distance forward from the robot's centre to where the arm sets an
+    #: object down.  Measure it on the actual robot - it decides where the
+    #: chassis must stand for the object to land on the aim point.
+    gripper_reach_m: float = 0.25
+    #: Keep the chassis at least this far off any wall while fine-positioning.
+    robot_clearance_m: float = 0.16
+    #: Largest fine-positioning slide allowed when lining up the drop.
+    max_nudge_m: float = 0.40
     #: Quarter turns the robot may make while sweeping the ToF for the object.
     #: 4 covers a full circle from wherever it stopped.
     object_scan_turns: int = 4
@@ -227,6 +236,7 @@ class MissionController(object):
                 cell_size_m=cfg.cell_size_m,
                 turn_speed_dps=cfg.turn_speed_dps,
                 place_backoff_cm=cfg.place_backoff_cm,
+                gripper_reach_m=cfg.gripper_reach_m,
             )
             self.robot.on_status = self._on_robot_status
             result = self.robot.connect()
@@ -321,6 +331,7 @@ class MissionController(object):
             sensor_interface=self.sensor_source,
             engine=self.sim_engine,
             cell_size_m=cfg.cell_size_m,
+            gripper_reach_m=cfg.gripper_reach_m,
         )
         self.robot.on_status = self._on_robot_status
         self.sim_engine.start_engine()
@@ -760,13 +771,30 @@ class MissionController(object):
             self.navigation_status = "TO DELIVERY"
             self.tracker.set_status(RobotStatus.NAVIGATING)
             self.log("DELIVERY: carrying to {}".format(grid.delivery_cell))
-            if not self._drive_to(grid.delivery_cell, "delivery point"):
+
+            plan = self.plan_delivery_pose()
+            if plan is None:
+                self.navigation_status = "NO AIM POINT"
+                self.log("No delivery aim point to work to", "error")
+                return
+            stand_cell, target_col, target_row = plan
+            if stand_cell != grid.delivery_cell:
+                self.log("Releasing from {} so the object lands on {}".format(
+                    stand_cell, grid.delivery_cell))
+            if not self._drive_to(stand_cell, "delivery point"):
                 return
 
             self.navigation_status = "PLACING"
             if not self._face_direction(grid.delivery_dir):
                 return
-            result = self.robot.place(offset_xy=self._place_offset_robot_frame())
+
+            # Slide the last few centimetres so the release lands on the aim
+            # point rather than wherever the cell-by-cell drive happened to stop.
+            nudge, residual = self._delivery_nudge(target_col, target_row)
+            if residual > 0.02:
+                self.log("Walls limit the approach - releasing {:.0f} cm off the"
+                         " aim point".format(residual * 100), "warn")
+            result = self.robot.place(offset_xy=nudge)
             if not result.ok:
                 self.navigation_status = "PLACE FAILED"
                 self.log("Place failed: {}".format(result.reason), "error")
@@ -796,6 +824,106 @@ class MissionController(object):
                 self.robot.stop()
             self.mission_kind = MISSION_IDLE
             self.tracker.set_target(None)
+
+    def delivery_aim_point(self):
+        """The aim point in continuous map cell coordinates."""
+        grid = self.map
+        if grid.delivery_cell is None:
+            return None
+        off_x, off_y = getattr(grid, "delivery_offset", (0.0, 0.0))
+        return (grid.delivery_cell[0] + off_x, grid.delivery_cell[1] + off_y)
+
+    def _release_offset_cells(self):
+        cell_m = self.map.cell_size_m or self.config.cell_size_m
+        reach = getattr(self.robot, "release_offset_m", self.config.gripper_reach_m)
+        return reach / cell_m
+
+    def plan_delivery_pose(self):
+        """Where the chassis must stand for the object to land on the aim point.
+
+        The gripper does not let go under the robot's centre - it releases
+        ``release_offset_m`` in front of it (negative on the real robot, whose
+        drop sequence reverses first).  So the robot has to stand *back* from
+        the aim point by exactly that much, facing the marked direction.  The
+        standing spot is often outside the delivery square, which is fine as
+        long as the chassis stays clear of the walls.
+
+        Returns ``(stand_cell, target_col, target_row)`` or ``None``.
+        """
+        aim = self.delivery_aim_point()
+        if aim is None:
+            return None
+        grid = self.map
+        facing = DIR_VECTORS[grid.delivery_dir % 4]
+        reach = self._release_offset_cells()
+        target_col = aim[0] - facing[0] * reach
+        target_row = aim[1] - facing[1] * reach
+
+        stand = (int(math.floor(target_col + 0.5)), int(math.floor(target_row + 0.5)))
+        if not (grid.in_bounds(*stand) and grid.passable(*stand,
+                                                         allow_unknown=self.config.allow_unknown_cells)):
+            # Ideal spot is off the map or blocked; deliver from the square itself.
+            stand = grid.delivery_cell
+        return stand, target_col, target_row
+
+    def position_is_clear(self, col, row):
+        """Whether a chassis centre there keeps clear of the surrounding walls."""
+        grid = self.map
+        cell = (int(math.floor(col + 0.5)), int(math.floor(row + 0.5)))
+        if not grid.in_bounds(cell[0], cell[1]) or grid.is_blocked(*cell):
+            return False
+        cell_m = grid.cell_size_m or self.config.cell_size_m
+        clearance = self.config.robot_clearance_m
+        gaps = (
+            (0, (row - (cell[1] - 0.5)) * cell_m),
+            (2, ((cell[1] + 0.5) - row) * cell_m),
+            (3, (col - (cell[0] - 0.5)) * cell_m),
+            (1, ((cell[0] + 0.5) - col) * cell_m),
+        )
+        for direction, gap in gaps:
+            if grid.has_wall(cell[0], cell[1], direction) and gap < clearance:
+                return False
+        return True
+
+    def _delivery_nudge(self, target_col, target_row):
+        """Fine slide from where the robot is to where it must release from.
+
+        Trimmed back until the whole slide stays clear of the walls, so lining
+        up the drop can never be the thing that drives into one.
+        """
+        state = self.tracker.get()
+        if not state.valid:
+            return (0.0, 0.0), float("inf")
+        cell_m = self.map.cell_size_m or self.config.cell_size_m
+        d_col = target_col - state.map_col
+        d_row = target_row - state.map_row
+
+        # Trim to the longest prefix of the slide that stays clear.
+        scale = 1.0
+        while scale > 0.05:
+            col = state.map_col + d_col * scale
+            row = state.map_row + d_row * scale
+            if self.position_is_clear(col, row):
+                break
+            scale -= 0.1
+        else:
+            scale = 0.0
+        d_col *= scale
+        d_row *= scale
+
+        facing = DIR_VECTORS[self.map.delivery_dir % 4]
+        right = DIR_VECTORS[(self.map.delivery_dir + 1) % 4]
+        forward_m = (d_col * facing[0] + d_row * facing[1]) * cell_m
+        right_m = (d_col * right[0] + d_row * right[1]) * cell_m
+
+        limit = self.config.max_nudge_m
+        distance = math.hypot(forward_m, right_m)
+        if distance > limit:
+            forward_m *= limit / distance
+            right_m *= limit / distance
+        residual = math.hypot(target_col - state.map_col - d_col,
+                              target_row - state.map_row - d_row) * cell_m
+        return (forward_m, right_m), residual
 
     def _place_offset_robot_frame(self):
         """Aim point for the drop, as (forward, right) metres for the robot.

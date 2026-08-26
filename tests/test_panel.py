@@ -19,7 +19,7 @@ import unittest
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from src.panel.explorer import FrontierExplorer
-from src.panel.geometry import CoordinateTransform, RobotPose, heading_to_dir, wrap180
+from src.panel.geometry import DIR_VECTORS, CoordinateTransform, RobotPose, heading_to_dir, wrap180
 from src.panel.mapper import OccupancyMapper
 from src.panel.mission import MODE_SIM, MissionConfig, MissionController
 from src.panel.occupancy import FREE, OBSTACLE, UNKNOWN, WALL, OccupancyGrid
@@ -1607,6 +1607,93 @@ class TestCarryMission(unittest.TestCase):
         view.handle_event(click, grid)
         self.assertIsNone(grid.object_cell)
         self.assertNotIn((3, 2), grid.objects)
+
+    def _deliver(self, controller):
+        """Runs pickup then delivery, returning (aim, release) in cell coords."""
+        self.assertTrue(controller.start_pickup_mission())
+        self._run_mission(controller)
+        self.assertTrue(controller.robot.carrying)
+        self.assertTrue(controller.start_delivery_mission())
+        self._run_mission(controller)
+        return controller.delivery_aim_point(), controller.robot.last_release_point
+
+    def _error_cm(self, aim, release, cell_m):
+        return math.hypot(release[0] - aim[0], release[1] - aim[1]) * cell_m * 100
+
+    def test_object_lands_on_the_delivery_aim_point(self):
+        """The gripper releases in front of the robot, not under it, so the
+        chassis has to stand back from the aim point by exactly that much."""
+        grid = self._field()
+        grid.delivery_offset = (0.35, -0.35)     # well off-centre in the square
+        controller = self._controller(grid)
+        try:
+            self.assertTrue(controller.connect()[0])
+            aim, release = self._deliver(controller)
+            self.assertIsNotNone(release, "the simulator must record the release")
+            self.assertLess(self._error_cm(aim, release, grid.cell_size_m), 5.0)
+        finally:
+            controller.shutdown()
+
+    def test_delivery_stands_off_the_square_when_the_reach_needs_it(self):
+        """Standing outside the delivery square is fine - that is where the
+        robot has to be for the object to land inside it."""
+        grid = self._field()
+        grid.delivery_offset = (0.0, 0.0)
+        controller = self._controller(grid)
+        try:
+            self.assertTrue(controller.connect()[0])
+            plan = controller.plan_delivery_pose()
+            self.assertIsNotNone(plan)
+            stand, target_col, target_row = plan
+            reach = controller._release_offset_cells()
+            facing = DIR_VECTORS[grid.delivery_dir % 4]
+            aim = controller.delivery_aim_point()
+            # The planned pose is exactly one reach back from the aim point.
+            self.assertAlmostEqual(target_col + facing[0] * reach, aim[0], places=6)
+            self.assertAlmostEqual(target_row + facing[1] * reach, aim[1], places=6)
+        finally:
+            controller.shutdown()
+
+    def test_fine_positioning_never_puts_the_chassis_into_a_wall(self):
+        grid = self._field()
+        grid.delivery_offset = (0.0, 0.45)       # aim hard against the south side
+        grid.set_wall(grid.delivery_cell[0], grid.delivery_cell[1], 2, True)
+        controller = self._controller(grid)
+        try:
+            self.assertTrue(controller.connect()[0])
+            aim, release = self._deliver(controller)
+            state = controller.tracker.get()
+            self.assertTrue(controller.position_is_clear(state.map_col, state.map_row),
+                            "the chassis must stay clear of the wall it aimed at")
+            self.assertIsNotNone(release)
+        finally:
+            controller.shutdown()
+
+    def test_position_is_clear_rejects_hugging_a_wall(self):
+        grid = self._field()
+        controller = self._controller(grid)
+        try:
+            grid.set_wall(2, 2, 0, True)         # wall on the north side of (2,2)
+            clearance = controller.config.robot_clearance_m
+            cell_m = grid.cell_size_m
+            # Centre of the cell is fine; right up against that wall is not.
+            self.assertTrue(controller.position_is_clear(2.0, 2.0))
+            hugging = 2.0 - 0.5 + (clearance * 0.4) / cell_m
+            self.assertFalse(controller.position_is_clear(2.0, hugging))
+        finally:
+            controller.shutdown()
+
+    def test_nudge_is_capped(self):
+        grid = self._field()
+        controller = self._controller(grid)
+        try:
+            self.assertTrue(controller.connect()[0])
+            controller.config.max_nudge_m = 0.05
+            state = controller.tracker.get()
+            nudge, _ = controller._delivery_nudge(state.map_col + 3.0, state.map_row)
+            self.assertLessEqual(math.hypot(*nudge), 0.05 + 1e-6)
+        finally:
+            controller.shutdown()
 
     def test_delivery_needs_a_place_point(self):
         grid = self._field()

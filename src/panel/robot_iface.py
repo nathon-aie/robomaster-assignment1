@@ -17,6 +17,7 @@ the map, matching the yaw convention in ``geometry.py``.
 """
 
 import atexit
+import math
 import signal
 import threading
 import time
@@ -236,6 +237,10 @@ class RobotInterface(object):
     # ------------------------------------------------------------------ gripper
     #: True once something is held, so the UI and mission can show/queue it.
     carrying = False
+    #: How far in front of the robot's centre this backend actually releases
+    #: an object, in metres.  Negative means behind - the real drop sequence
+    #: reverses the chassis before opening, so the object ends up back there.
+    release_offset_m = 0.25
 
     def has_gripper(self):
         """Whether this backend can pick things up at all."""
@@ -288,11 +293,15 @@ class RealRobotInterface(RobotInterface):
     def __init__(self, conn_type="ap", calibration_file="calibration_output/calibration.json",
                  sensor_rate_hz=20.0, base_speed=0.15, nominal_side_mm=140.0,
                  cell_size_m=0.60, allow_mock_fallback=False, turn_speed_dps=30.0,
-                 place_backoff_cm=50.0):
+                 place_backoff_cm=50.0, gripper_reach_m=0.25):
         RobotInterface.__init__(self)
         # main's field-tuned drop sequence reverses the chassis before opening
         # the gripper, so the object is released behind where the robot stood.
         self.place_backoff_cm = place_backoff_cm
+        self.gripper_reach_m = gripper_reach_m
+        # drop() reverses by place_backoff_cm and *then* lowers the arm, so the
+        # object lands that much further back than the arm's own reach.
+        self.release_offset_m = gripper_reach_m - place_backoff_cm / 100.0
         self.conn_type = conn_type
         self.calibration_file = calibration_file
         self.sensor_rate_hz = sensor_rate_hz
@@ -624,8 +633,15 @@ class SimRobotInterface(RobotInterface):
     kind = "sim"
     is_physical = False
 
-    def __init__(self, sim_robot, sensor_interface, engine=None, cell_size_m=0.60):
+    def __init__(self, sim_robot, sensor_interface, engine=None, cell_size_m=0.60,
+                 gripper_reach_m=0.25):
         RobotInterface.__init__(self)
+        # The simulator sets the object down in front of itself; it does not
+        # model the real drop sequence's reverse.
+        self.release_offset_m = gripper_reach_m
+        self.clearance_m = 0.16
+        #: Where the object was last let go, in map cell coordinates.
+        self.last_release_point = None
         self.robot = sim_robot
         self._sensors = sensor_interface
         self.engine = engine
@@ -749,10 +765,22 @@ class SimRobotInterface(RobotInterface):
         if not self.carrying:
             return RobotCommandResult(False, "Nothing to place")
         time.sleep(0.4)
+        if offset_xy:
+            # Line up on the aim point exactly, the way chassis.move() does.
+            self.robot.nudge(offset_xy[0], offset_xy[1],
+                             clearance_m=self.clearance_m)
         truth = getattr(self.robot, "ground_truth", None)
         if truth is not None:
-            map_pose = self.robot.transform.robot_to_map(self.robot.pose())
-            truth.objects.add(map_pose.cell)
+            # The object leaves the gripper in front of the robot, not under it.
+            pose = self.robot.pose()
+            map_pose = self.robot.transform.robot_to_map(pose)
+            cell_m = self.robot.transform.cell_size_m or 0.60
+            angle = math.radians(map_pose.heading_deg)
+            reach = self.release_offset_m / cell_m
+            self.last_release_point = (map_pose.col + math.sin(angle) * reach,
+                                       map_pose.row - math.cos(angle) * reach)
+            truth.objects.add((int(math.floor(self.last_release_point[0] + 0.5)),
+                               int(math.floor(self.last_release_point[1] + 0.5))))
         self.carrying = False
         if self._sensors is not None:
             self._sensors.payload_distance_m = None
