@@ -1,15 +1,15 @@
 {
     "grid_info": {
-        "rows": 4,
-        "cols": 4,
-        "grid_size_px": 150
+        "rows": 6,
+        "cols": 5,
+        "grid_size_px": 100
     },
     "start": [
-        2,
-        1
+        0,
+        5
     ],
     "goal": [
-        1,
+        3,
         1
     ],
     "walls": [
@@ -20,7 +20,7 @@
             ],
             "walls": {
                 "top": true,
-                "bottom": true,
+                "bottom": false,
                 "left": true,
                 "right": false
             }
@@ -32,7 +32,7 @@
             ],
             "walls": {
                 "top": true,
-                "bottom": false,
+                "bottom": true,
                 "left": false,
                 "right": false
             }
@@ -44,7 +44,7 @@
             ],
             "walls": {
                 "top": true,
-                "bottom": true,
+                "bottom": false,
                 "left": false,
                 "right": false
             }
@@ -52,6 +52,18 @@
         {
             "pos": [
                 3,
+                0
+            ],
+            "walls": {
+                "top": true,
+                "bottom": true,
+                "left": false,
+                "right": false
+            }
+        },
+        {
+            "pos": [
+                4,
                 0
             ],
             "walls": {
@@ -67,7 +79,7 @@
                 1
             ],
             "walls": {
-                "top": true,
+                "top": false,
                 "bottom": false,
                 "left": true,
                 "right": false
@@ -79,8 +91,8 @@
                 1
             ],
             "walls": {
-                "top": false,
-                "bottom": true,
+                "top": true,
+                "bottom": false,
                 "left": false,
                 "right": true
             }
@@ -88,6 +100,18 @@
         {
             "pos": [
                 2,
+                1
+            ],
+            "walls": {
+                "top": false,
+                "bottom": false,
+                "left": true,
+                "right": true
+            }
+        },
+        {
+            "pos": [
+                3,
                 1
             ],
             "walls": {
@@ -99,12 +123,12 @@
         },
         {
             "pos": [
-                3,
+                4,
                 1
             ],
             "walls": {
                 "top": false,
-                "bottom": true,
+                "bottom": false,
                 "left": false,
                 "right": true
             }
@@ -116,7 +140,7 @@
             ],
             "walls": {
                 "top": false,
-                "bottom": false,
+                "bottom": true,
                 "left": true,
                 "right": false
             }
@@ -124,18 +148,6 @@
         {
             "pos": [
                 1,
-                2
-            ],
-            "walls": {
-                "top": true,
-                "bottom": false,
-                "left": false,
-                "right": false
-            }
-        },
-        {
-            "pos": [
-                2,
                 2
             ],
             "walls": {
@@ -147,13 +159,37 @@
         },
         {
             "pos": [
+                2,
+                2
+            ],
+            "walls": {
+                "top": false,
+                "bottom": false,
+                "left": true,
+                "right": true
+            }
+        },
+        {
+            "pos": [
                 3,
                 2
             ],
             "walls": {
-                "top": true,
-                "bottom": false,
+                "top": false,
+                "bottom": true,
                 "left": true,
+                "right": false
+            }
+        },
+        {
+            "pos": [
+                4,
+                2
+            ],
+            "walls": {
+                "top": false,
+                "bottom": true,
+                "left": false,
                 "right": true
             }
         },
@@ -163,8 +199,8 @@
                 3
             ],
             "walls": {
-                "top": false,
-                "bottom": true,
+                "top": true,
+                "bottom": false,
                 "left": true,
                 "right": false
             }
@@ -172,18 +208,6 @@
         {
             "pos": [
                 1,
-                3
-            ],
-            "walls": {
-                "top": false,
-                "bottom": true,
-                "left": false,
-                "right": false
-            }
-        },
-        {
-            "pos": [
-                2,
                 3
             ],
             "walls": {
@@ -195,46 +219,217 @@
         },
         {
             "pos": [
-                3,
+                2,
                 3
             ],
             "walls": {
                 "top": false,
                 "bottom": true,
                 "left": false,
+                "right": false
+            }
+        },
+        {
+            "pos": [
+                3,
+                3
+            ],
+            "walls": {
+                "top": true,
+                "bottom": false,
+                "left": false,
+                "right": false
+            }
+        },
+        {
+            "pos": [
+                4,
+                3
+            ],
+            "walls": {
+                "top": true,
+                "bottom": false,
+                "left": false,
+                "right": false
+            }
+        },
+        {
+            "pos": [
+                0,
+                4
+            ],
+            "walls": {
+                "top": false,
+                "bottom": false,
+                "left": true,
+                "right": true
+            }
+        },
+        {
+            "pos": [
+                1,
+                4
+            ],
+            "walls": {
+                "top": true,
+                "bottom": false,
+                "left": true,
+                "right": false
+            }
+        },
+        {
+            "pos": [
+                2,
+                4
+            ],
+            "walls": {
+                "top": true,
+                "bottom": false,
+                "left": false,
+                "right": true
+            }
+        },
+        {
+            "pos": [
+                3,
+                4
+            ],
+            "walls": {
+                "top": false,
+                "bottom": false,
+                "left": true,
+                "right": true
+            }
+        },
+        {
+            "pos": [
+                4,
+                4
+            ],
+            "walls": {
+                "top": false,
+                "bottom": false,
+                "left": true,
+                "right": true
+            }
+        },
+        {
+            "pos": [
+                0,
+                5
+            ],
+            "walls": {
+                "top": false,
+                "bottom": false,
+                "left": true,
+                "right": true
+            }
+        },
+        {
+            "pos": [
+                1,
+                5
+            ],
+            "walls": {
+                "top": false,
+                "bottom": true,
+                "left": true,
+                "right": false
+            }
+        },
+        {
+            "pos": [
+                2,
+                5
+            ],
+            "walls": {
+                "top": false,
+                "bottom": true,
+                "left": false,
+                "right": false
+            }
+        },
+        {
+            "pos": [
+                3,
+                5
+            ],
+            "walls": {
+                "top": false,
+                "bottom": true,
+                "left": false,
+                "right": true
+            }
+        },
+        {
+            "pos": [
+                4,
+                5
+            ],
+            "walls": {
+                "top": false,
+                "bottom": true,
+                "left": true,
                 "right": true
             }
         }
     ],
     "path": [
         [
+            0,
+            5
+        ],
+        [
+            0,
+            4
+        ],
+        [
+            0,
+            3
+        ],
+        [
+            1,
+            3
+        ],
+        [
+            2,
+            3
+        ],
+        [
+            2,
+            2
+        ],
+        [
             2,
             1
         ],
         [
             2,
-            2
+            0
         ],
         [
-            1,
-            2
+            3,
+            0
         ],
         [
-            0,
-            2
+            4,
+            0
         ],
         [
-            0,
+            4,
             1
         ],
         [
-            1,
+            3,
             1
         ]
     ],
     "commands": [
-        "Turn Around (180 deg)",
-        "Move Forward: 1 cells",
+        "Move Forward: 2 cells",
+        "Turn Right (90 deg)",
+        "Move Forward: 2 cells",
+        "Turn Left (90 deg)",
+        "Move Forward: 3 cells",
         "Turn Right (90 deg)",
         "Move Forward: 2 cells",
         "Turn Right (90 deg)",
@@ -246,54 +441,32 @@
         {
             "step": 0,
             "pos": [
-                2,
-                1
+                0,
+                5
             ],
-            "facing": "South (ลง)",
+            "facing": "North (ขึ้น)",
             "detected_walls": [
                 "Right",
-                "Back"
+                "Left"
             ]
         },
         {
             "step": 1,
             "pos": [
-                2,
-                2
+                0,
+                4
             ],
-            "facing": "West (ซ้าย)",
+            "facing": "North (ขึ้น)",
             "detected_walls": [
-                "Back",
+                "Right",
                 "Left"
             ]
         },
         {
             "step": 2,
             "pos": [
-                1,
-                2
-            ],
-            "facing": "West (ซ้าย)",
-            "detected_walls": [
-                "Right"
-            ]
-        },
-        {
-            "step": 3,
-            "pos": [
                 0,
-                2
-            ],
-            "facing": "North (ขึ้น)",
-            "detected_walls": [
-                "Left"
-            ]
-        },
-        {
-            "step": 4,
-            "pos": [
-                0,
-                1
+                3
             ],
             "facing": "East (ขวา)",
             "detected_walls": [
@@ -302,12 +475,105 @@
             ]
         },
         {
-            "step": 5,
+            "step": 3,
             "pos": [
                 1,
-                1
+                3
             ],
             "facing": "East (ขวา)",
+            "detected_walls": [
+                "Right",
+                "Left"
+            ]
+        },
+        {
+            "step": 4,
+            "pos": [
+                2,
+                3
+            ],
+            "facing": "North (ขึ้น)",
+            "detected_walls": [
+                "Back"
+            ]
+        },
+        {
+            "step": 5,
+            "pos": [
+                2,
+                2
+            ],
+            "facing": "North (ขึ้น)",
+            "detected_walls": [
+                "Right",
+                "Left"
+            ]
+        },
+        {
+            "step": 6,
+            "pos": [
+                2,
+                1
+            ],
+            "facing": "North (ขึ้น)",
+            "detected_walls": [
+                "Right",
+                "Left"
+            ]
+        },
+        {
+            "step": 7,
+            "pos": [
+                2,
+                0
+            ],
+            "facing": "East (ขวา)",
+            "detected_walls": [
+                "Left"
+            ]
+        },
+        {
+            "step": 8,
+            "pos": [
+                3,
+                0
+            ],
+            "facing": "East (ขวา)",
+            "detected_walls": [
+                "Right",
+                "Left"
+            ]
+        },
+        {
+            "step": 9,
+            "pos": [
+                4,
+                0
+            ],
+            "facing": "South (ลง)",
+            "detected_walls": [
+                "Back",
+                "Left"
+            ]
+        },
+        {
+            "step": 10,
+            "pos": [
+                4,
+                1
+            ],
+            "facing": "West (ซ้าย)",
+            "detected_walls": [
+                "Back"
+            ]
+        },
+        {
+            "step": 11,
+            "pos": [
+                3,
+                1
+            ],
+            "facing": "West (ซ้าย)",
             "detected_walls": [
                 "Front",
                 "Right"

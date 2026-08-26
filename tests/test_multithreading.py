@@ -147,14 +147,47 @@ class TestFullMultiThreadingExecution(unittest.TestCase):
         self.assertTrue(json_path.exists())
         self.assertTrue(csv_path.exists())
 
-        # Test TelemetryAnalyzer
-        stats = TelemetryAnalyzer.analyze_file(str(json_path), save_plot=True)
+        # Test TelemetryAnalyzer with directory path
+        stats = TelemetryAnalyzer.analyze_file(str(sys_runner.telemetry.run_dir), save_plot=True)
         self.assertIn("sample_count", stats)
         self.assertGreater(stats["sample_count"], 5)
         plot_path = Path(stats["plot_path"])
         self.assertTrue(plot_path.exists())
 
         sys_runner.shutdown(save_telemetry=False)
+
+    def test_sequential_run_folders(self):
+        telem_base = self.temp_dir / "sequential_telemetry"
+        
+        # Run 1
+        rec1 = TelemetryRecorder(output_dir=str(telem_base))
+        self.assertEqual(rec1.run_name, "run1")
+        rec1.record_snapshot(RobotSensorSnapshot(frame_index=1))
+        j1, c1 = rec1.export()
+        self.assertTrue(j1.exists())
+        self.assertEqual(j1.parent.name, "run1")
+        self.assertTrue(j1.name.startswith("run1_"))
+        self.assertTrue(j1.name.endswith(".json"))
+        self.assertTrue(c1.name.startswith("run1_"))
+        self.assertTrue(c1.name.endswith(".csv"))
+
+        # Run 2
+        rec2 = TelemetryRecorder(output_dir=str(telem_base))
+        self.assertEqual(rec2.run_name, "run2")
+        rec2.record_snapshot(RobotSensorSnapshot(frame_index=2))
+        j2, c2 = rec2.export()
+        self.assertTrue(j2.exists())
+        self.assertEqual(j2.parent.name, "run2")
+        self.assertTrue(j2.name.startswith("run2_"))
+
+        # Run 3
+        rec3 = TelemetryRecorder(output_dir=str(telem_base))
+        self.assertEqual(rec3.run_name, "run3")
+        rec3.record_snapshot(RobotSensorSnapshot(frame_index=3))
+        j3, c3 = rec3.export()
+        self.assertTrue(j3.exists())
+        self.assertEqual(j3.parent.name, "run3")
+        self.assertTrue(j3.name.startswith("run3_"))
 
 
 if __name__ == "__main__":

@@ -282,8 +282,12 @@ class RealRobotInterface(RobotInterface):
 
     def __init__(self, conn_type="ap", calibration_file="calibration_output/calibration.json",
                  sensor_rate_hz=20.0, base_speed=0.15, nominal_side_mm=140.0,
-                 cell_size_m=0.60, allow_mock_fallback=False, turn_speed_dps=30.0):
+                 cell_size_m=0.60, allow_mock_fallback=False, turn_speed_dps=30.0,
+                 place_backoff_cm=50.0):
         RobotInterface.__init__(self)
+        # main's field-tuned drop sequence reverses the chassis before opening
+        # the gripper, so the object is released behind where the robot stood.
+        self.place_backoff_cm = place_backoff_cm
         self.conn_type = conn_type
         self.calibration_file = calibration_file
         self.sensor_rate_hz = sensor_rate_hz
@@ -542,7 +546,7 @@ class RealRobotInterface(RobotInterface):
             return RobotCommandResult(False, "Gripper unavailable")
         try:
             chassis = self.system.robot.chassis if self.system.robot else None
-            controller.drop(chassis=chassis)
+            controller.drop(chassis=chassis, back_cm=self.place_backoff_cm)
         except Exception as exc:
             return RobotCommandResult(False, "Place failed: {}".format(exc))
         self.carrying = False

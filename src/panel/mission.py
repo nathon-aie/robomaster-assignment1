@@ -82,6 +82,10 @@ class MissionConfig:
     deviation_cells: float = 0.85
     allow_unknown_cells: bool = False       # "safe navigation" - off by default
     turn_penalty: float = 0.35
+    #: How far the real drop sequence reverses the chassis before opening the
+    #: gripper (cm).  Matches the value tuned on the robot; the object ends up
+    #: roughly this far behind the Place point.  0 releases on the spot.
+    place_backoff_cm: float = 50.0
     automap_max_steps: int = 4000
     #: Keep exploring until every reachable cell has actually been driven
     #: through, not just until the unknowns are resolved.
@@ -205,6 +209,7 @@ class MissionController(object):
                 nominal_side_mm=cfg.nominal_side_mm,
                 cell_size_m=cfg.cell_size_m,
                 turn_speed_dps=cfg.turn_speed_dps,
+                place_backoff_cm=cfg.place_backoff_cm,
             )
             self.robot.on_status = self._on_robot_status
             result = self.robot.connect()
@@ -602,8 +607,13 @@ class MissionController(object):
 
             self.navigation_status = "COMPLETE"
             self.tracker.set_status(RobotStatus.READY)
-            self.log("Carry mission complete: bottle placed at {} facing {}".format(
-                grid.place_cell, DIR_LONG[grid.place_dir % 4]))
+            backoff = self.config.place_backoff_cm if self.robot.is_physical else 0.0
+            where = "at {}".format(grid.place_cell)
+            if backoff:
+                where += (" (released ~{:.0f} cm behind it - the drop"
+                          " sequence reverses first)".format(backoff))
+            self.log("Carry mission complete: bottle placed {} facing {}".format(
+                where, DIR_LONG[grid.place_dir % 4]))
         except Exception as exc:  # pragma: no cover - defensive
             self.navigation_status = "ERROR"
             self.tracker.set_status(RobotStatus.ERROR)

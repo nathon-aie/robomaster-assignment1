@@ -3,10 +3,11 @@ import heapq
 import sys
 import json
 
-# ตั้งค่า Grid และขนาดหน้าจอ
-WIDTH, HEIGHT = 600, 600
-ROWS, COLS = 4, 4
-GRID_SIZE = WIDTH // COLS
+# ตั้งค่า Grid และขนาดหน้าจอ (6 x 5)
+COLS, ROWS = 5, 6
+GRID_SIZE = 100
+WIDTH = COLS * GRID_SIZE
+HEIGHT = ROWS * GRID_SIZE
 WALL_THICKNESS = 4  # ความหนาของกำแพง
 
 # สี (RGB)
@@ -306,13 +307,19 @@ def load_map_and_plan(grid, filename="data/robot_map_plan.json"):
         start_pos = data.get("start", [0, 0])
         goal_pos = data.get("goal", [COLS-1, ROWS-1])
         
-        start = grid[start_pos[1]][start_pos[0]]
-        goal = grid[goal_pos[1]][goal_pos[0]]
+        start_c = min(COLS - 1, max(0, start_pos[0]))
+        start_r = min(ROWS - 1, max(0, start_pos[1]))
+        goal_c = min(COLS - 1, max(0, goal_pos[0]))
+        goal_r = min(ROWS - 1, max(0, goal_pos[1]))
+
+        start = grid[start_r][start_c]
+        goal = grid[goal_r][goal_c]
 
         # โหลด Path
         path = []
         for pos in data.get("path", []):
-            path.append(grid[pos[1]][pos[0]])
+            if 0 <= pos[1] < ROWS and 0 <= pos[0] < COLS:
+                path.append(grid[pos[1]][pos[0]])
 
         print(f"\n[SUCCESS] โหลดไฟล์ '{target_path}' สำเร็จ!")
         return start, goal, path
