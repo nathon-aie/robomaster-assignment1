@@ -24,10 +24,14 @@ TOOL_GOAL = "Goal"
 TOOL_CHECKPOINT = "Checkpoint"
 TOOL_ROBOT = "Robot"
 TOOL_OBSTACLE = "Obstacle"
-TOOL_PLACE = "Place"
+TOOL_OBJECT = "Object"
+TOOL_DELIVERY = "Delivery"
+
+#: Kept so saved layouts / older code naming the single Place tool still work.
+TOOL_PLACE = TOOL_DELIVERY
 
 TOOLS = (TOOL_SELECT, TOOL_WALL, TOOL_ERASE, TOOL_START, TOOL_GOAL,
-         TOOL_CHECKPOINT, TOOL_ROBOT, TOOL_PLACE, TOOL_OBSTACLE)
+         TOOL_CHECKPOINT, TOOL_ROBOT, TOOL_OBJECT, TOOL_DELIVERY, TOOL_OBSTACLE)
 
 
 class MapView(object):
@@ -124,9 +128,9 @@ class MapView(object):
 
         if event.button == 3:
             # Right click rotates whichever directional marker was clicked.
-            if grid.place_cell == cell:
-                grid.place_dir = (grid.place_dir + 1) % 4
-                self._emit("place_dir", grid.place_dir)
+            if grid.delivery_cell == cell:
+                grid.delivery_dir = (grid.delivery_dir + 1) % 4
+                self._emit("delivery_dir", grid.delivery_dir)
             elif grid.robot_cell == cell:
                 grid.robot_dir = (grid.robot_dir + 1) % 4
                 self._emit("robot_dir", grid.robot_dir)
@@ -166,15 +170,23 @@ class MapView(object):
         elif self.tool == TOOL_ROBOT:
             grid.robot_cell = cell
             self._emit("robot", cell)
-        elif self.tool == TOOL_PLACE:
-            if grid.place_cell == cell:
+        elif self.tool == TOOL_DELIVERY:
+            if grid.delivery_cell == cell:
                 # Clicking it again turns it, so one tool sets both cell and facing.
-                grid.place_dir = (grid.place_dir + 1) % 4
+                grid.delivery_dir = (grid.delivery_dir + 1) % 4
             else:
-                grid.place_cell = cell
+                grid.delivery_cell = cell
                 if grid.get(*cell) in (WALL, OBSTACLE):
                     grid.set(cell[0], cell[1], FREE)
-            self._emit("place", cell)
+            self._emit("delivery", cell)
+        elif self.tool == TOOL_OBJECT:
+            if grid.object_cell == cell:
+                grid.object_cell = None      # click again to clear it
+            else:
+                grid.object_cell = cell
+                if grid.get(*cell) in (WALL, OBSTACLE):
+                    grid.set(cell[0], cell[1], FREE)
+            self._emit("object", cell)
         elif self.tool == TOOL_OBSTACLE:
             grid.set(cell[0], cell[1], FREE if grid.get(*cell) == OBSTACLE else OBSTACLE)
             self._emit("obstacle", cell)
@@ -342,11 +354,36 @@ class MapView(object):
         badge(grid.goal, theme.CELL_GOAL, "G")
         for i, cp in enumerate(grid.checkpoints):
             badge(cp, theme.CELL_CHECKPOINT, str(i + 1))
+        self._draw_object_marker(surface, fonts, grid)
         self._draw_place_marker(surface, fonts, grid)
+
+    def _draw_object_marker(self, surface, fonts, grid):
+        """The square the object stands on, plus the aim point inside it."""
+        cell = grid.object_cell
+        if cell is None:
+            return
+        x, y = self.cell_to_px(cell[0], cell[1])
+        rect = pygame.Rect(x + 2, y + 2, self.cell_px - 4, self.cell_px - 4)
+        pygame.draw.rect(surface, theme.CELL_OBJECT, rect, border_radius=4)
+        pygame.draw.rect(surface, theme.OBJECT_AIM, rect, 2, border_radius=4)
+        img = fonts.small.render("O", True, theme.TEXT)
+        surface.blit(img, img.get_rect(
+            center=(rect.centerx, int(rect.centery - self.cell_px * 0.12))))
+        self._draw_aim_dot(surface, cell, grid.object_offset, theme.OBJECT_AIM)
+
+    def _draw_aim_dot(self, surface, cell, offset, colour):
+        """Marks the chosen sub-cell aim point inside a marker square."""
+        off_x, off_y = offset
+        cx, cy = self.cell_center_px(cell[0], cell[1])
+        px = cx + off_x * self.cell_px
+        py = cy + off_y * self.cell_px
+        radius = max(2, int(self.cell_px * 0.07))
+        pygame.draw.circle(surface, colour, (int(px), int(py)), radius)
+        pygame.draw.circle(surface, theme.TEXT, (int(px), int(py)), radius, 1)
 
     def _draw_place_marker(self, surface, fonts, grid):
         """Where a carried object is put down, plus the facing it is placed at."""
-        cell = grid.place_cell
+        cell = grid.delivery_cell
         if cell is None:
             return
         x, y = self.cell_to_px(cell[0], cell[1])
@@ -359,7 +396,7 @@ class MapView(object):
         surface.blit(img, img.get_rect(center=(cx, cy - self.cell_px * 0.10)))
 
         # Arrow showing the heading the robot faces while releasing the object.
-        angle = math.radians(grid.place_dir * 90.0)
+        angle = math.radians(grid.delivery_dir * 90.0)
         dx, dy = math.sin(angle), -math.cos(angle)
         px, py = -dy, dx
         reach = self.cell_px * 0.30
@@ -371,6 +408,7 @@ class MapView(object):
                  tip[1] - dy * reach * 0.45 - py * reach * 0.3)
         pygame.draw.line(surface, theme.PLACE_ARROW, base, tip, max(2, self.cell_px // 20))
         pygame.draw.polygon(surface, theme.PLACE_ARROW, (tip, left, right))
+        self._draw_aim_dot(surface, cell, grid.delivery_offset, theme.PLACE_ARROW)
 
     def _draw_paths(self, surface, ctx):
         result = ctx.get("path_result")

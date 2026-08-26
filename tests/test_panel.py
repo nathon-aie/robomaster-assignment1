@@ -7,6 +7,7 @@ Runs headless - no pygame window, no hardware.
     python -m unittest tests.test_panel
 """
 
+import io
 import math
 import os
 import sys
@@ -1157,9 +1158,10 @@ class TestCarryMission(unittest.TestCase):
         grid.goal = (5, 2)               # the bottle
         grid.robot_cell = (0, 0)
         grid.robot_dir = 1
-        grid.place_cell = (1, 5)         # where it must end up
-        grid.place_dir = 2               # facing South when released
+        grid.delivery_cell = (1, 5)         # where it must end up
+        grid.delivery_dir = 2               # facing South when released
         grid.objects = {grid.goal}       # the bottle actually standing there
+        grid.object_cell = grid.goal     # ...and the Object tool marks it
         return grid
 
     def test_place_point_survives_save_and_load(self):
@@ -1169,21 +1171,21 @@ class TestCarryMission(unittest.TestCase):
         try:
             grid.save(path)
             loaded = OccupancyGrid.load(path)
-            self.assertEqual(loaded.place_cell, (1, 5))
-            self.assertEqual(loaded.place_dir, 2)
+            self.assertEqual(loaded.delivery_cell, (1, 5))
+            self.assertEqual(loaded.delivery_dir, 2)
         finally:
             os.unlink(path)
 
     def test_place_point_rotates_with_the_map(self):
         grid = self._field()               # 6x6, place (1,5) facing South
         grid.rotate(1)                     # 90 deg clockwise
-        self.assertEqual(grid.place_cell, (0, 1))
-        self.assertEqual(grid.place_dir, 3)   # South turned clockwise is West
+        self.assertEqual(grid.delivery_cell, (0, 1))
+        self.assertEqual(grid.delivery_dir, 3)   # South turned clockwise is West
 
     def test_place_point_is_dropped_when_resized_away(self):
         grid = self._field()
         grid.resize(2, 2, keep=True)
-        self.assertIsNone(grid.place_cell)
+        self.assertIsNone(grid.delivery_cell)
 
     def test_simulated_gripper_tracks_what_it_holds(self):
         controller = self._controller(self._field())
@@ -1218,8 +1220,8 @@ class TestCarryMission(unittest.TestCase):
             self._run_mission(controller)
             state = controller.tracker.get()
             self.assertEqual(controller.navigation_status, "COMPLETE")
-            self.assertEqual(state.cell, grid.place_cell)
-            self.assertEqual(heading_to_dir(state.map_heading), grid.place_dir)
+            self.assertEqual(state.cell, grid.delivery_cell)
+            self.assertEqual(heading_to_dir(state.map_heading), grid.delivery_dir)
             self.assertFalse(controller.robot.carrying, "the object must be released")
         finally:
             controller.shutdown()
@@ -1307,7 +1309,7 @@ class TestCarryMission(unittest.TestCase):
             self._run_mission(controller)
             self.assertEqual(controller.navigation_status, "COMPLETE")
             self.assertFalse(controller.robot.carrying)
-            self.assertEqual(controller.tracker.get().cell, grid.place_cell)
+            self.assertEqual(controller.tracker.get().cell, grid.delivery_cell)
         finally:
             controller.shutdown()
 
@@ -1359,7 +1361,7 @@ class TestCarryMission(unittest.TestCase):
     def test_object_place_works_without_a_delivery_point(self):
         """Picking up does not depend on knowing where it will go."""
         grid = self._field()
-        grid.place_cell = None
+        grid.delivery_cell = None
         controller = self._controller(grid)
         try:
             self.assertTrue(controller.connect()[0])
@@ -1389,7 +1391,7 @@ class TestCarryMission(unittest.TestCase):
             self._run_mission(controller)
             self.assertEqual(controller.navigation_status, "COMPLETE")
             self.assertFalse(controller.robot.carrying)
-            self.assertEqual(controller.tracker.get().cell, grid.place_cell)
+            self.assertEqual(controller.tracker.get().cell, grid.delivery_cell)
         finally:
             controller.shutdown()
 
@@ -1440,40 +1442,129 @@ class TestCarryMission(unittest.TestCase):
             controller.shutdown()
 
     def test_delivery_target_grid_is_nine_by_nine(self):
-        from src.panel.ui.place_dialog import PlaceTargetDialog
+        from src.panel.ui.place_dialog import DELIVERY_TARGET, SubCellTargetDialog
 
-        self.assertEqual(PlaceTargetDialog.DIVISIONS, 9)
+        self.assertEqual(SubCellTargetDialog.DIVISIONS, 9)
         grid = self._field()
-        dialog = PlaceTargetDialog(grid)
+        dialog = SubCellTargetDialog(grid, kind=DELIVERY_TARGET)
         # The middle sub-square is the cell centre.
         centre = dialog._offset_for(4, 4)
         self.assertAlmostEqual(centre[0], 0.0)
         self.assertAlmostEqual(centre[1], 0.0)
         # Round-tripping a chosen square selects the same square again.
-        grid.place_offset = dialog._offset_for(7, 2)
+        grid.delivery_offset = dialog._offset_for(7, 2)
         self.assertEqual(dialog._selected_indices(), (7, 2))
 
     def test_place_offset_roundtrips_and_rotates(self):
         grid = self._field()
-        grid.place_offset = (0.3, -0.2)
+        grid.delivery_offset = (0.3, -0.2)
         handle, path = tempfile.mkstemp(suffix=".json")
         os.close(handle)
         try:
             grid.save(path)
             loaded = OccupancyGrid.load(path)
-            self.assertAlmostEqual(loaded.place_offset[0], 0.3)
-            self.assertAlmostEqual(loaded.place_offset[1], -0.2)
+            self.assertAlmostEqual(loaded.delivery_offset[0], 0.3)
+            self.assertAlmostEqual(loaded.delivery_offset[1], -0.2)
         finally:
             os.unlink(path)
         # An aim point due East becomes due South after a clockwise turn.
-        grid.place_offset = (0.4, 0.0)
+        grid.delivery_offset = (0.4, 0.0)
         grid.rotate(1)
-        self.assertAlmostEqual(grid.place_offset[0], 0.0)
-        self.assertAlmostEqual(grid.place_offset[1], 0.4)
+        self.assertAlmostEqual(grid.delivery_offset[0], 0.0)
+        self.assertAlmostEqual(grid.delivery_offset[1], 0.4)
+
+    def test_object_target_aims_inside_the_object_square(self):
+        """TARGET: OBJECT edits the object offset, not the delivery one."""
+        from src.panel.ui.place_dialog import OBJECT_TARGET, SubCellTargetDialog
+
+        grid = self._field()
+        dialog = SubCellTargetDialog(grid, kind=OBJECT_TARGET)
+        self.assertFalse(dialog.has_facing, "an object has no facing to set")
+        self.assertEqual(dialog.title, "TARGET: OBJECT")
+        self.assertEqual(dialog.cell, grid.object_cell)
+
+        before_delivery = grid.delivery_offset
+        dialog._set_offset(dialog._offset_for(6, 1))
+        self.assertEqual(dialog._selected_indices(), (6, 1))
+        self.assertEqual(grid.delivery_offset, before_delivery,
+                         "the delivery aim must be left alone")
+        self.assertNotEqual(grid.object_offset, (0.0, 0.0))
+
+    def test_delivery_target_aims_inside_the_delivery_square(self):
+        from src.panel.ui.place_dialog import DELIVERY_TARGET, SubCellTargetDialog
+
+        grid = self._field()
+        dialog = SubCellTargetDialog(grid, kind=DELIVERY_TARGET)
+        self.assertTrue(dialog.has_facing)
+        self.assertEqual(dialog.title, "TARGET: DELIVERY")
+        self.assertEqual(dialog.cell, grid.delivery_cell)
+
+        before_object = grid.object_offset
+        dialog._set_offset(dialog._offset_for(2, 7))
+        self.assertEqual(dialog._selected_indices(), (2, 7))
+        self.assertEqual(grid.object_offset, before_object,
+                         "the object aim must be left alone")
+
+    def test_object_marker_saves_rotates_and_clamps(self):
+        grid = self._field()
+        grid.object_cell = (4, 1)
+        grid.object_offset = (0.3, -0.2)
+        handle, path = tempfile.mkstemp(suffix=".json")
+        os.close(handle)
+        try:
+            grid.save(path)
+            loaded = OccupancyGrid.load(path)
+            self.assertEqual(loaded.object_cell, (4, 1))
+            self.assertAlmostEqual(loaded.object_offset[0], 0.3)
+            self.assertAlmostEqual(loaded.object_offset[1], -0.2)
+        finally:
+            os.unlink(path)
+
+        # An aim due East becomes due South after a clockwise turn.
+        grid.object_offset = (0.4, 0.0)
+        grid.rotate(1)
+        self.assertAlmostEqual(grid.object_offset[0], 0.0)
+        self.assertAlmostEqual(grid.object_offset[1], 0.4)
+
+        grid.resize(2, 2, keep=True)
+        self.assertIsNone(grid.object_cell)
+
+    def test_pickup_uses_the_object_marker_over_the_goal(self):
+        grid = self._field()
+        grid.object_cell = (1, 1)        # deliberately not the goal
+        grid.goal = (5, 2)
+        controller = self._controller(grid)
+        try:
+            self.assertEqual(controller.object_square(), (1, 1))
+            grid.object_cell = None
+            self.assertEqual(controller.object_square(), (5, 2),
+                             "older maps without an Object marker fall back")
+        finally:
+            controller.shutdown()
+
+    def test_legacy_place_key_still_loads(self):
+        """Maps saved before the rename used a "place" block."""
+        import json
+
+        grid = open_grid(5, 5)
+        data = grid.to_dict()
+        data.pop("delivery", None)
+        data["place"] = {"cell": [2, 3], "dir": 1, "offset": [0.25, -0.25]}
+        handle, path = tempfile.mkstemp(suffix=".json")
+        os.close(handle)
+        try:
+            with io.open(path, "w", encoding="utf-8") as fh:
+                fh.write(json.dumps(data))
+            loaded = OccupancyGrid.load(path)
+            self.assertEqual(loaded.delivery_cell, (2, 3))
+            self.assertEqual(loaded.delivery_dir, 1)
+            self.assertAlmostEqual(loaded.delivery_offset[0], 0.25)
+        finally:
+            os.unlink(path)
 
     def test_delivery_needs_a_place_point(self):
         grid = self._field()
-        grid.place_cell = None
+        grid.delivery_cell = None
         controller = self._controller(grid)
         try:
             self.assertTrue(controller.connect()[0])
@@ -1484,7 +1575,8 @@ class TestCarryMission(unittest.TestCase):
 
     def test_object_place_needs_a_square_to_look_in(self):
         grid = self._field()
-        grid.goal = None
+        grid.object_cell = None
+        grid.goal = None                 # no fallback square either
         controller = self._controller(grid)
         try:
             self.assertTrue(controller.connect()[0])

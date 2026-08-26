@@ -68,12 +68,14 @@ class OccupancyGrid(object):
         self.checkpoints = []      # list of (col, row), ordered by the user
         self.robot_cell = None     # editor-placed robot start cell
         self.robot_dir = 0         # editor-placed robot start heading (dir index)
-        self.place_cell = None     # where a carried object is put down
-        self.place_dir = 0         # heading the robot faces while placing it
+        self.delivery_cell = None  # square a carried object is put down on
+        self.delivery_dir = 0      # heading the robot faces while releasing it
+        self.object_cell = None    # square the object to pick up stands on
         self.objects = set()       # cells holding a graspable object
-        #: Aim point inside that cell, as fractions of a cell in [-0.5, 0.5]
-        #: from its centre: +x is East, +y is South (screen axes).
-        self.place_offset = (0.0, 0.0)
+        #: Aim points *inside* those cells, as fractions of a cell in
+        #: [-0.5, 0.5] from the centre: +x is East, +y is South (screen axes).
+        self.delivery_offset = (0.0, 0.0)
+        self.object_offset = (0.0, 0.0)
         self.cell_size_m = 0.60
         self.resize(width, height, fill=fill)
 
@@ -116,8 +118,10 @@ class OccupancyGrid(object):
             self.goal = None
         if not ok(self.robot_cell):
             self.robot_cell = None
-        if not ok(self.place_cell):
-            self.place_cell = None
+        if not ok(self.delivery_cell):
+            self.delivery_cell = None
+        if not ok(self.object_cell):
+            self.object_cell = None
         self.objects = set(p for p in self.objects if ok(p))
         self.checkpoints = [p for p in self.checkpoints if ok(p)]
 
@@ -305,9 +309,11 @@ class OccupancyGrid(object):
         self.checkpoints = []
         self.robot_cell = None
         self.robot_dir = 0
-        self.place_cell = None
-        self.place_dir = 0
-        self.place_offset = (0.0, 0.0)
+        self.delivery_cell = None
+        self.delivery_dir = 0
+        self.delivery_offset = (0.0, 0.0)
+        self.object_cell = None
+        self.object_offset = (0.0, 0.0)
         self.objects = set()
 
     def rotate(self, quarter_turns=1):
@@ -353,14 +359,17 @@ class OccupancyGrid(object):
         self.start = move(*self.start) if self.start else None
         self.goal = move(*self.goal) if self.goal else None
         self.robot_cell = move(*self.robot_cell) if self.robot_cell else None
-        self.place_cell = move(*self.place_cell) if self.place_cell else None
+        self.delivery_cell = move(*self.delivery_cell) if self.delivery_cell else None
+        self.object_cell = move(*self.object_cell) if self.object_cell else None
         self.checkpoints = [move(*p) for p in self.checkpoints]
         self.objects = set(move(*p) for p in self.objects)
         self.robot_dir = (self.robot_dir + 1) % 4
-        self.place_dir = (self.place_dir + 1) % 4
+        self.delivery_dir = (self.delivery_dir + 1) % 4
         # Clockwise on screen: (x, y) -> (-y, x)
-        off_x, off_y = self.place_offset
-        self.place_offset = (-off_y, off_x)
+        off_x, off_y = self.delivery_offset
+        self.delivery_offset = (-off_y, off_x)
+        off_x, off_y = self.object_offset
+        self.object_offset = (-off_y, off_x)
 
     def random_map(self, wall_density=0.28, seed=None):
         """Random maze-ish layout using interior edge walls."""
@@ -409,9 +418,11 @@ class OccupancyGrid(object):
             "checkpoints": [list(p) for p in self.checkpoints],
             "robot": {"cell": list(self.robot_cell) if self.robot_cell else None,
                       "dir": self.robot_dir},
-            "place": {"cell": list(self.place_cell) if self.place_cell else None,
-                      "dir": self.place_dir,
-                      "offset": list(self.place_offset)},
+            "delivery": {"cell": list(self.delivery_cell) if self.delivery_cell else None,
+                         "dir": self.delivery_dir,
+                         "offset": list(self.delivery_offset)},
+            "object": {"cell": list(self.object_cell) if self.object_cell else None,
+                       "offset": list(self.object_offset)},
             "objects": [list(p) for p in sorted(self.objects)],
             "cells": [list(row) for row in self.cells],
             "walls": walls,
@@ -467,14 +478,20 @@ class OccupancyGrid(object):
         rcell = robot.get("cell")
         self.robot_cell = (int(rcell[0]), int(rcell[1])) if rcell else self.start
         self.robot_dir = int(robot.get("dir", 0)) % 4
-        place = data.get("place") or {}
+        # "place" is the older key for the same thing; keep reading it.
+        place = data.get("delivery") or data.get("place") or {}
         pcell = place.get("cell")
-        self.place_cell = (int(pcell[0]), int(pcell[1])) if pcell else None
-        self.place_dir = int(place.get("dir", 0)) % 4
+        self.delivery_cell = (int(pcell[0]), int(pcell[1])) if pcell else None
+        self.delivery_dir = int(place.get("dir", 0)) % 4
         offset = place.get("offset") or [0.0, 0.0]
         self.objects = set((int(p[0]), int(p[1])) for p in data.get("objects", []))
+        obj = data.get("object") or {}
+        ocell = obj.get("cell")
+        self.object_cell = (int(ocell[0]), int(ocell[1])) if ocell else None
+        ooff = obj.get("offset") or [0.0, 0.0]
+        self.object_offset = (float(ooff[0]), float(ooff[1]))
         offset = place.get("offset") or (0.0, 0.0)
-        self.place_offset = (float(offset[0]), float(offset[1]))
+        self.delivery_offset = (float(offset[0]), float(offset[1]))
         self._clamp_markers()
         return self
 
@@ -512,7 +529,7 @@ class OccupancyGrid(object):
                     ch = "G"
                 elif (c, r) in self.checkpoints:
                     ch = "C"
-                elif self.place_cell == (c, r):
+                elif self.delivery_cell == (c, r):
                     ch = "P"
                 elif (c, r) in self.objects:
                     ch = "o"

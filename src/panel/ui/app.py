@@ -32,7 +32,7 @@ from ..robot_state import RobotStatus
 from ..simulation import SPEED_STEPS
 from . import theme
 from .map_view import TOOLS, MapView
-from .place_dialog import PlaceTargetDialog
+from .place_dialog import DELIVERY_TARGET, OBJECT_TARGET, SubCellTargetDialog
 from .widgets import Button, Modal, NumberInput, ProgressBar, draw_kv, draw_panel, draw_text
 
 DEFAULT_MAP_PATH = os.path.join("data", "panel_map.json")
@@ -343,8 +343,11 @@ class MissionControlApp(object):
                    tooltip="Go to the object's square, sweep the ToF for it and grab it")
         row.button("DELIVERY", self.act_delivery, "ok", enabled=self._can_deliver,
                    tooltip="Carry what is held to the delivery point and release it")
-        row.button("TARGET", self.act_place_target, "normal",
-                   enabled=lambda: self.editable() and self.controller.map.place_cell is not None,
+        row.button("TARGET: OBJECT", self.act_object_target, "normal",
+                   enabled=lambda: self.editable() and self.controller.map.object_cell is not None,
+                   tooltip="Pick the exact sub-square the object stands on")
+        row.button("TARGET: DELIVERY", self.act_place_target, "normal",
+                   enabled=lambda: self.editable() and self.controller.map.delivery_cell is not None,
                    tooltip="Pick the exact sub-square to release the object on")
         row.button("BACK TO START", self.act_back_to_start, "warn",
                    enabled=self._can_return)
@@ -383,13 +386,14 @@ class MissionControlApp(object):
 
     def _can_pickup(self):
         controller = self.controller
+        grid = controller.map
         return (self._gripper_ready() and not controller.robot.carrying
-                and controller.map.goal is not None)
+                and (grid.object_cell is not None or grid.goal is not None))
 
     def _can_deliver(self):
         controller = self.controller
         return (self._gripper_ready() and controller.robot.carrying
-                and controller.map.place_cell is not None)
+                and controller.map.delivery_cell is not None)
 
     def act_pickup(self):
         """Go to the object's square, sweep for it and grab it."""
@@ -398,7 +402,7 @@ class MissionControlApp(object):
         if robot is not None and robot.is_physical:
             self._confirm(
                 "OBJECT PLACE",
-                ["The robot will drive to {},".format(controller.map.goal),
+                ["The robot will drive to {},".format(controller.object_square()),
                  "turn in place sweeping the ToF for the object,",
                  "and close the gripper on it."],
                 self._do_pickup, label="GO AND GRAB",
@@ -417,13 +421,13 @@ class MissionControlApp(object):
         controller = self.controller
         grid = controller.map
         robot = controller.robot
-        off_x, off_y = getattr(grid, "place_offset", (0.0, 0.0))
+        off_x, off_y = getattr(grid, "delivery_offset", (0.0, 0.0))
         cell_m = grid.cell_size_m or controller.config.cell_size_m
         if robot is not None and robot.is_physical:
             self._confirm(
                 "DELIVERY",
                 ["Carry the object to {} facing {},".format(
-                    grid.place_cell, DIR_LONG[grid.place_dir % 4].upper()),
+                    grid.delivery_cell, DIR_LONG[grid.delivery_dir % 4].upper()),
                  "releasing it {:+.0f} cm E {:+.0f} cm S inside that square.".format(
                      off_x * cell_m * 100, off_y * cell_m * 100)],
                 self._do_delivery, label="DELIVER",
@@ -433,7 +437,7 @@ class MissionControlApp(object):
 
     def _do_delivery(self):
         if self.controller.start_delivery_mission():
-            self.notify("Delivering to {}".format(self.controller.map.place_cell))
+            self.notify("Delivering to {}".format(self.controller.map.delivery_cell))
         else:
             self.notify(self.controller.last_error or "Cannot start DELIVERY")
 
@@ -464,21 +468,38 @@ class MissionControlApp(object):
             self.notify(self.controller.last_error or "Cannot return to Start")
 
     def act_place_target(self):
-        """Opens the zoomed aiming window for the Place cell."""
+        """Zoomed aiming window for the delivery square."""
         grid = self.controller.map
-        if grid.place_cell is None:
-            self.notify("Set a Place point first with the Place tool")
+        if grid.delivery_cell is None:
+            self.notify("Mark the delivery square first with the Delivery tool")
             return
-        self.place_dialog = PlaceTargetDialog(
-            grid, on_change=self._on_place_target_changed,
+        self._open_target(DELIVERY_TARGET)
+
+    def act_object_target(self):
+        """Zoomed aiming window for the object square."""
+        grid = self.controller.map
+        if grid.object_cell is None:
+            self.notify("Mark the object square first with the Object tool")
+            return
+        self._open_target(OBJECT_TARGET)
+
+    def _open_target(self, kind):
+        grid = self.controller.map
+        self.place_dialog = SubCellTargetDialog(
+            grid, kind=kind, on_change=lambda: self._on_target_changed(kind),
             cell_size_m=grid.cell_size_m or self.controller.config.cell_size_m)
 
-    def _on_place_target_changed(self):
+    def _on_target_changed(self, kind):
         grid = self.controller.map
-        off_x, off_y = grid.place_offset
         cell_m = grid.cell_size_m or self.controller.config.cell_size_m
-        self.notify("Drop aim {:+.0f} cm E {:+.0f} cm S in cell {}".format(
-            off_x * cell_m * 100, off_y * cell_m * 100, grid.place_cell))
+        if kind == OBJECT_TARGET:
+            off_x, off_y = grid.object_offset
+            cell = grid.object_cell
+        else:
+            off_x, off_y = grid.delivery_offset
+            cell = grid.delivery_cell
+        self.notify("{} aim {:+.0f} cm E {:+.0f} cm S in cell {}".format(
+            kind.capitalize(), off_x * cell_m * 100, off_y * cell_m * 100, cell))
 
     def _can_jog(self):
         controller = self.controller
@@ -789,10 +810,13 @@ class MissionControlApp(object):
 
     def _on_map_edit(self, kind, payload):
         self.controller.path_result = self.controller.path_result.__class__()
-        if kind in ("place", "place_dir"):
+        if kind in ("delivery", "delivery_dir"):
             grid = self.controller.map
-            self.notify("Place point {} facing {}".format(
-                grid.place_cell, DIR_LONG[grid.place_dir % 4]))
+            self.notify("Delivery square {} facing {} - use TARGET: DELIVERY to aim".format(
+                grid.delivery_cell, DIR_LONG[grid.delivery_dir % 4]))
+        elif kind == "object":
+            self.notify("Object square {} - use TARGET: OBJECT to aim".format(
+                self.controller.map.object_cell))
         if kind in ("robot", "robot_dir") and self.connected():
             self.notify("Robot placement changed - press SET ORIGIN once the "
                         "robot is physically there", seconds=8.0)

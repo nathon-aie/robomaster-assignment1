@@ -609,6 +609,18 @@ class MissionController(object):
         self.last_detection = detection
         return detection
 
+    def object_square(self):
+        """Square the object is expected on.
+
+        The Object tool is the explicit way to say where it is; maps drawn
+        before that tool existed used the Goal marker, so fall back to it
+        rather than refusing to run on an older map.
+        """
+        grid = self.map
+        if grid.object_cell is not None:
+            return grid.object_cell
+        return grid.goal
+
     def start_pickup_mission(self):
         """OBJECT PLACE: go to the object's square, find it, grab it.
 
@@ -624,9 +636,12 @@ class MissionController(object):
         if self.robot is not None and self.robot.carrying:
             self.log("Already holding something - use DELIVERY", "warn")
             return False
-        if grid.goal is None:
-            self.log("Set the object's square with the Goal tool first", "warn")
+        if self.object_square() is None:
+            self.log("Mark the object square with the Object tool first", "warn")
             return False
+        if grid.object_cell is None:
+            self.log("No Object marker set - using the Goal square at {}".format(
+                grid.goal), "warn")
         if not self._preflight(need_path=False):
             return False
         self._stop_flag.clear()
@@ -648,7 +663,7 @@ class MissionController(object):
         if self.robot is not None and not self.robot.carrying:
             self.log("Nothing in the gripper - run OBJECT PLACE first", "warn")
             return False
-        if grid.place_cell is None:
+        if grid.delivery_cell is None:
             self.log("Set a delivery point with the Place tool first", "warn")
             return False
         if not self._preflight(need_path=False):
@@ -675,8 +690,9 @@ class MissionController(object):
         try:
             self.navigation_status = "TO OBJECT"
             self.tracker.set_status(RobotStatus.NAVIGATING)
-            self.log("OBJECT PLACE: heading to the square at {}".format(grid.goal))
-            if self._approach(grid.goal, "object") is None:
+            target = self.object_square()
+            self.log("OBJECT PLACE: heading to the square at {}".format(target))
+            if self._approach(target, "object") is None:
                 return
 
             self.navigation_status = "SCANNING"
@@ -743,12 +759,12 @@ class MissionController(object):
         try:
             self.navigation_status = "TO DELIVERY"
             self.tracker.set_status(RobotStatus.NAVIGATING)
-            self.log("DELIVERY: carrying to {}".format(grid.place_cell))
-            if not self._drive_to(grid.place_cell, "delivery point"):
+            self.log("DELIVERY: carrying to {}".format(grid.delivery_cell))
+            if not self._drive_to(grid.delivery_cell, "delivery point"):
                 return
 
             self.navigation_status = "PLACING"
-            if not self._face_direction(grid.place_dir):
+            if not self._face_direction(grid.delivery_dir):
                 return
             result = self.robot.place(offset_xy=self._place_offset_robot_frame())
             if not result.ok:
@@ -759,9 +775,9 @@ class MissionController(object):
             self.sync_gripper_state()
             self.navigation_status = "COMPLETE"
             self.tracker.set_status(RobotStatus.READY)
-            off_x, off_y = getattr(grid, "place_offset", (0.0, 0.0))
+            off_x, off_y = getattr(grid, "delivery_offset", (0.0, 0.0))
             cell_m = grid.cell_size_m or self.config.cell_size_m
-            where = "at {}".format(grid.place_cell)
+            where = "at {}".format(grid.delivery_cell)
             if off_x or off_y:
                 where += " aimed {:+.0f} cm E {:+.0f} cm S in the square".format(
                     off_x * cell_m * 100, off_y * cell_m * 100)
@@ -770,7 +786,7 @@ class MissionController(object):
                 where += (" (released ~{:.0f} cm behind it - the drop"
                           " sequence reverses first)".format(backoff))
             self.log("Delivery complete: object placed {} facing {}".format(
-                where, DIR_LONG[grid.place_dir % 4]))
+                where, DIR_LONG[grid.delivery_dir % 4]))
         except Exception as exc:  # pragma: no cover - defensive
             self.navigation_status = "ERROR"
             self.tracker.set_status(RobotStatus.ERROR)
@@ -788,12 +804,12 @@ class MissionController(object):
         needs it relative to the way it is facing when it lets go.
         """
         grid = self.map
-        off_x, off_y = getattr(grid, "place_offset", (0.0, 0.0))
+        off_x, off_y = getattr(grid, "delivery_offset", (0.0, 0.0))
         if not off_x and not off_y:
             return None
         cell_m = grid.cell_size_m or self.config.cell_size_m
-        forward = DIR_VECTORS[grid.place_dir % 4]
-        right = DIR_VECTORS[(grid.place_dir + 1) % 4]
+        forward = DIR_VECTORS[grid.delivery_dir % 4]
+        right = DIR_VECTORS[(grid.delivery_dir + 1) % 4]
         return (
             (off_x * forward[0] + off_y * forward[1]) * cell_m,
             (off_x * right[0] + off_y * right[1]) * cell_m,
