@@ -15,7 +15,8 @@ Usage:
     python main.py monitor --conn-type ap
 
     # 5. Step 2: Analyze post-run telemetry
-    python main.py analyze telemetry_logs/run_XXXX.json
+    python main.py analyze telemetry_logs/run1
+    # or python main.py analyze telemetry_logs/run1/run1.json
 
     # 6. Step 1: Fit sensor calibration curves
     python main.py calibrate fit data/calibration_measurements.csv
@@ -339,7 +340,7 @@ def main():
 
     # 6. Analyze
     ana_p = subparsers.add_parser("analyze", help="Analyze telemetry log and generate graphs")
-    ana_p.add_argument("file", help="Path to telemetry JSON file")
+    ana_p.add_argument("file", help="Path to telemetry JSON file or run folder (e.g. telemetry_logs/run1)")
     ana_p.add_argument("--no-plot", action="store_true", help="Skip plot generation")
 
     # 7. Calibrate

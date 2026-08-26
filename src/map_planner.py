@@ -5,7 +5,7 @@ import json
 
 # ตั้งค่า Grid และขนาดหน้าจอ
 WIDTH, HEIGHT = 600, 600
-ROWS, COLS = 4, 4
+ROWS, COLS = 4, 6
 GRID_SIZE = WIDTH // COLS
 WALL_THICKNESS = 4  # ความหนาของกำแพง
 

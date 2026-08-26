@@ -9,6 +9,7 @@ import csv
 import json
 import math
 import os
+import re
 import threading
 import time
 from datetime import datetime
@@ -16,17 +17,55 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 
 
-class TelemetryRecorder:
-    """Thread-safe time-series telemetry logger for online mapping & post-run analysis."""
+def get_next_run_number(base_dir: Path, prefix: str = "run") -> int:
+    """Finds the next sequential run number by scanning existing subdirectories (e.g. run1, run2, ...)."""
+    if not base_dir.exists():
+        return 1
 
-    def __init__(self, output_dir: str = "telemetry_logs", buffer_capacity: int = 10000):
-        self.output_dir = Path(output_dir)
-        self.output_dir.mkdir(parents=True, exist_ok=True)
+    pattern = re.compile(rf"^{re.escape(prefix)}(\d+)$", re.IGNORECASE)
+    run_numbers = []
+    for entry in base_dir.iterdir():
+        if entry.is_dir():
+            match = pattern.match(entry.name)
+            if match:
+                try:
+                    run_numbers.append(int(match.group(1)))
+                except ValueError:
+                    pass
+
+    return max(run_numbers) + 1 if run_numbers else 1
+
+
+class TelemetryRecorder:
+    """Thread-safe time-series telemetry logger for online mapping & post-run analysis.
+
+    Saves session data into sequential run directories (run1, run2, run3, ...) inside base_dir,
+    with files timestamped (e.g. run1_20260826_133706.json).
+    """
+
+    def __init__(
+        self,
+        output_dir: str = "telemetry_logs",
+        buffer_capacity: int = 10000,
+        run_name: Optional[str] = None,
+    ):
+        self.base_dir = Path(output_dir)
+        self.base_dir.mkdir(parents=True, exist_ok=True)
         self.buffer_capacity = buffer_capacity
         self._lock = threading.Lock()
         self._records: List[Dict[str, Any]] = []
         self._start_time = time.time()
-        self._session_id = datetime.now().strftime("%Y%m%d_%H%M%S")
+        self.timestamp_str = datetime.now().strftime("%Y%m%d_%H%M%S")
+
+        if run_name:
+            self.run_name = run_name
+        else:
+            next_num = get_next_run_number(self.base_dir, prefix="run")
+            self.run_name = f"run{next_num}"
+
+        self.run_dir = self.base_dir / self.run_name
+        self.output_dir = self.run_dir  # For backward compatibility
+        self._session_id = f"{self.run_name}_{self.timestamp_str}"
 
     def record_snapshot(self, snapshot: Any):
         """Thread-safe push of sensor snapshot."""
@@ -41,17 +80,20 @@ class TelemetryRecorder:
             return list(self._records)
 
     def export(self, custom_name: Optional[str] = None) -> Tuple[Path, Path]:
-        """Saves current session data to JSON and CSV."""
+        """Saves current session data to timestamped JSON and CSV inside the sequential run directory."""
         with self._lock:
             records = list(self._records)
 
-        name = custom_name or f"run_{self._session_id}"
-        json_path = self.output_dir / f"{name}.json"
-        csv_path = self.output_dir / f"{name}.csv"
+        self.run_dir.mkdir(parents=True, exist_ok=True)
+        base_filename = custom_name if custom_name else self.run_name
+        name = f"{base_filename}_{self.timestamp_str}"
+        json_path = self.run_dir / f"{name}.json"
+        csv_path = self.run_dir / f"{name}.csv"
 
         # Export JSON
         summary = {
             "session_id": self._session_id,
+            "run_folder": self.run_name,
             "recorded_at": datetime.now().isoformat(),
             "sample_count": len(records),
             "duration_sec": records[-1]["elapsed_sec"] if records else 0.0,
@@ -76,8 +118,22 @@ class TelemetryAnalyzer:
     """Post-run analysis tool: computes sensor health, stability, stats, and plots."""
 
     @staticmethod
-    def analyze_file(json_file_path: str, save_plot: bool = True) -> Dict[str, Any]:
-        path = Path(json_file_path)
+    def analyze_file(file_or_dir_path: str, save_plot: bool = True) -> Dict[str, Any]:
+        path = Path(file_or_dir_path)
+        if path.is_dir():
+            # If a folder was given (e.g. telemetry_logs/run1), find the matching JSON file
+            json_candidates = sorted(list(path.glob("*.json")))
+            if not json_candidates:
+                print(f"[TelemetryAnalyzer] No .json files found in directory: {path}")
+                return {"error": f"No .json files found in {path}"}
+            # Prefer JSON matching prefix (e.g. run1_*.json or run1.json)
+            matching = [p for p in json_candidates if p.stem.startswith(path.name)]
+            path = matching[-1] if matching else json_candidates[-1]
+
+        if not path.exists():
+            print(f"[TelemetryAnalyzer] File does not exist: {path}")
+            return {"error": f"File not found: {path}"}
+
         with path.open("r", encoding="utf-8") as f:
             data = json.load(f)
 

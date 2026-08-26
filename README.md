@@ -36,7 +36,8 @@
 │   ├── sharp_left_calibration.png
 │   └── sharp_right_calibration.png
 │
-├── telemetry_logs/               # บันทึกประวัติการรันจริง (.json, .csv, และกราฟวิเคราะห์ .png)
+├── telemetry_logs/               # บันทึกประวัติการรันจริงแยกโฟลเดอร์รัน (run1/, run2/, ...)
+│   └── run1/                     # แต่ละรอบเก็บ run1_<timestamp>.json, run1_<timestamp>.csv, run1_<timestamp>_plot.png
 │
 └── tests/                        # ชุด Automated Unit & Integration Tests (100% Pass)
     ├── __init__.py
@@ -119,7 +120,8 @@ python3.8 -m venv .venv
 
 ### 6. วิเคราะห์สถิติและพลอตกราฟหลังรัน (Post-run Analysis)
 ```bash
-.venv/bin/python main.py analyze telemetry_logs/run_<timestamp>.json
+# วิเคราะห์โดยระบุชื่อโฟลเดอร์รัน หรือระบุไฟล์ .json โดยตรง
+.venv/bin/python main.py analyze telemetry_logs/run1
 ```
 
 ---

@@ -46,15 +46,15 @@
 |  - ตรวจสอบ Sensor Snapshot จาก Thread 1 เพื่อนำไปควบคุมการเคลื่อนที่         |
 |  - สั่งงาน Actuator (Chassis Move, Turn, Gripper Open/Close)                  |
 |  - รองรับ PID Control ใน Step 3 และ Gripper Placement ใน Step 4                |
-+---------------------------------------+---------------------------------------+
++-----------------------------------------------------------------------+-------+
                                         |
                                         v (เมื่อจบการทำงาน)
 +-------------------------------------------------------------------------------+
 |                      Telemetry Analyzer & Exporter                            |
-|  - telemetry_logs/run_<timestamp>.json (ข้อมูลดิบ + สถิติสรุป)                |
-|  - telemetry_logs/run_<timestamp>.csv (ตาราง Time-series สำหรับนำเข้า Excel)  |
-|  - telemetry_logs/run_<timestamp>_plot.png (กราฟวิเคราะห์ 4 มิติ)             |
-+---------------------------------------+---------------------------------------+
+|  - telemetry_logs/run1/run1.json (ข้อมูลดิบ + สถิติสรุป)                      |
+|  - telemetry_logs/run1/run1.csv (ตาราง Time-series สำหรับนำเข้า Excel)        |
+|  - telemetry_logs/run1/run1_plot.png (กราฟวิเคราะห์ 4 มิติ)                   |
++-------------------------------------------------------------------------------+
 ```
 
 ---
@@ -93,7 +93,7 @@
 
 ### 4. วิเคราะห์และพลอตกราฟข้อมูลหลังการรัน (Post-run Analysis)
 ```bash
-.venv/bin/python main.py analyze telemetry_logs/run_<timestamp>.json
+.venv/bin/python main.py analyze telemetry_logs/run1
 ```
 
 ### 5. รันทดสอบ Unit Tests ของ Step 2
