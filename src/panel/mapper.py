@@ -59,6 +59,10 @@ class OccupancyMapper(object):
         self.wall_confirm_votes = max(1, wall_confirm_votes)
         self._votes = {}
         self._last_frame = None
+        #: Set while the gripper holds something: the payload sits in the front
+        #: ToF beam and would otherwise be mapped as a wall a few centimetres
+        #: ahead, everywhere the robot goes.
+        self.ignore_front = False
         self.last_update = MapUpdate()
         self.updates = 0
         self.skipped = 0
@@ -140,6 +144,8 @@ class OccupancyMapper(object):
             return update
 
         for spec in SENSOR_SPECS:
+            if spec.name == "front" and self.ignore_front:
+                continue
             value = reading.distance(spec.name)
             valid = reading.is_valid(spec.name)
             kind, dist_m = self._classify(spec, value, valid)
@@ -222,12 +228,16 @@ class OccupancyMapper(object):
 
     def obstacle_ahead(self, reading, stop_distance_mm=200.0):
         """True when the front ToF sees something inside the hard-stop envelope."""
+        if self.ignore_front:
+            return False   # that is the carried object, not an obstacle
         if reading is None or reading.front_mm is None or not reading.front_valid:
             return False
         return reading.front_mm <= stop_distance_mm
 
     def blocking_cell_ahead(self, reading, transform=None):
         """Cell the front beam is currently blocked by, or ``None``."""
+        if self.ignore_front:
+            return None
         if reading is None or reading.front_mm is None or not reading.front_valid:
             return None
         transform = transform or self.transform

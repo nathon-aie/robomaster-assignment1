@@ -32,6 +32,7 @@ from ..robot_state import RobotStatus
 from ..simulation import SPEED_STEPS
 from . import theme
 from .map_view import TOOLS, MapView
+from .place_dialog import PlaceTargetDialog
 from .widgets import Button, Modal, NumberInput, ProgressBar, draw_kv, draw_panel, draw_text
 
 DEFAULT_MAP_PATH = os.path.join("data", "panel_map.json")
@@ -42,7 +43,7 @@ ROBOT_SPEEDS = (("SLOW", 0.10), ("NORMAL", 0.15), ("BRISK", 0.22))
 HEADER_H = 52
 LEFT_W = 296
 RIGHT_W = 316
-BOTTOM_H = 172
+BOTTOM_H = 212
 PAD = 10
 
 
@@ -74,7 +75,7 @@ def _stack_heights(available, gap):
     return heights[0], heights[1], heights[2], max(0, log_h)
 
 
-def fit_to_desktop(size, margin=(80, 120), minimum=(1180, 760)):
+def fit_to_desktop(size, margin=(80, 120), minimum=(1180, 800)):
     """Shrinks the requested window so it always fits on the actual screen.
 
     A laptop panel is often smaller than the layout's comfortable size; opening
@@ -135,7 +136,7 @@ class _ToolbarRow(object):
 
 
 class MissionControlApp(object):
-    MIN_SIZE = (1180, 760)
+    MIN_SIZE = (1180, 800)
 
     def __init__(self, controller=None, map_path=DEFAULT_MAP_PATH, size=(1600, 1000)):
         pygame.init()
@@ -149,6 +150,7 @@ class MissionControlApp(object):
         self.map_view = MapView((0, 0, 10, 10))
         self.map_view.on_edit = self._on_map_edit
         self.modal = None
+        self.place_dialog = None
         self.running = True
         self.status_message = ""
         self.status_until = 0.0
@@ -338,11 +340,17 @@ class MissionControlApp(object):
         # The Place point itself is set with the "Place" tool in the TOOLS row.
         row.group("GRIPPER")
         row.button("CARRY", self.act_carry, "ok", enabled=self._can_carry,
-                   tooltip="Drive to the Goal, grab the bottle, place it on the Place point")
+                   dynamic_label=self._carry_label,
+                   tooltip="Empty gripper: fetch from the Goal. Loaded: deliver to Place")
+        row.button("PLACE TARGET", self.act_place_target, "normal",
+                   enabled=lambda: self.editable() and self.controller.map.place_cell is not None)
+        row.button("BACK TO START", self.act_back_to_start, "warn",
+                   enabled=self._can_return)
         row.group("TURN ROBOT NOW")
         row.button("TURN LEFT", lambda: self.act_jog_turn(-90.0), "ok", enabled=self._can_jog)
         row.button("TURN RIGHT", lambda: self.act_jog_turn(90.0), "ok", enabled=self._can_jog)
         row.button("TURN 180", lambda: self.act_jog_turn(180.0), "ok", enabled=self._can_jog)
+        row = _ToolbarRow(self, PAD + 12, bar_y + 142)
         row.group("VIEW")
         row.button("TRAIL", lambda: self._toggle("show_trail"),
                    active=lambda: self.map_view.show_trail)
@@ -362,6 +370,55 @@ class MissionControlApp(object):
 
     def _robot_facing_label(self):
         return "FACING: {}".format(DIR_LONG[self.controller.map.robot_dir % 4].upper())
+
+    def _carry_label(self):
+        robot = self.controller.robot
+        if robot is not None and robot.carrying:
+            return "DELIVER"
+        return "FETCH"
+
+    def _can_return(self):
+        controller = self.controller
+        if not self.connected() or controller.mission_active():
+            return False
+        if controller.robot.emergency_stopped() or controller.map.start is None:
+            return False
+        return controller.armed or not controller.robot.is_physical
+
+    def act_back_to_start(self):
+        controller = self.controller
+        robot = controller.robot
+        if robot is not None and robot.is_physical:
+            self._confirm(
+                "RETURN TO START",
+                ["The robot will drive back to {}.".format(controller.map.start)],
+                self._do_back_to_start, label="GO",
+            )
+        else:
+            self._do_back_to_start()
+
+    def _do_back_to_start(self):
+        if self.controller.start_return_to_start():
+            self.notify("Returning to Start")
+        else:
+            self.notify(self.controller.last_error or "Cannot return to Start")
+
+    def act_place_target(self):
+        """Opens the zoomed aiming window for the Place cell."""
+        grid = self.controller.map
+        if grid.place_cell is None:
+            self.notify("Set a Place point first with the Place tool")
+            return
+        self.place_dialog = PlaceTargetDialog(
+            grid, on_change=self._on_place_target_changed,
+            cell_size_m=grid.cell_size_m or self.controller.config.cell_size_m)
+
+    def _on_place_target_changed(self):
+        grid = self.controller.map
+        off_x, off_y = grid.place_offset
+        cell_m = grid.cell_size_m or self.controller.config.cell_size_m
+        self.notify("Drop aim {:+.0f} cm E {:+.0f} cm S in cell {}".format(
+            off_x * cell_m * 100, off_y * cell_m * 100, grid.place_cell))
 
     def _can_carry(self):
         controller = self.controller
@@ -750,6 +807,12 @@ class MissionControlApp(object):
             self._build_layout()
             return
 
+        if self.place_dialog is not None:
+            self.place_dialog.layout(self.screen.get_rect())
+            self.place_dialog.handle_event(event)
+            if self.place_dialog.done:
+                self.place_dialog = None
+            return
         if self.modal is not None:
             self.modal.layout(self.screen.get_rect())
             self.modal.handle_event(event)
@@ -845,6 +908,9 @@ class MissionControlApp(object):
         if self.modal is not None:
             self.modal.layout(self.screen.get_rect())
             self.modal.draw(self.screen, self.fonts)
+        if self.place_dialog is not None:
+            self.place_dialog.layout(self.screen.get_rect())
+            self.place_dialog.draw(self.screen, self.fonts)
         pygame.display.flip()
 
     def _draw_toast(self, text):

@@ -178,7 +178,8 @@ class RealSensorInterface(SensorInterface):
 # Simulation
 # --------------------------------------------------------------------------
 
-def raycast_cells(grid, col, row, heading_deg, max_cells, step=0.02):
+def raycast_cells(grid, col, row, heading_deg, max_cells, step=0.02,
+                  object_radius=0.12):
     """Distance in *cells* from a continuous position to the first wall.
 
     Marches along the ray, honouring both the edge walls between cells and
@@ -192,11 +193,17 @@ def raycast_cells(grid, col, row, heading_deg, max_cells, step=0.02):
     cur_cell = (int(math.floor(col + 0.5)), int(math.floor(row + 0.5)))
     travelled = 0.0
     c, r = col, row
+    # A graspable object stands in the middle of its cell, so the beam stops
+    # short of the wall behind it - which is exactly what lets the detector
+    # tell "something is there" from "that is the wall".
+    objects = getattr(grid, "objects", None) or ()
     while travelled < max_cells:
         c += d_col * step
         r += d_row * step
         travelled += step
         cell = (int(math.floor(c + 0.5)), int(math.floor(r + 0.5)))
+        if cell in objects and math.hypot(c - cell[0], r - cell[1]) <= object_radius:
+            return travelled
         if cell == cur_cell:
             continue
         d_c = cell[0] - cur_cell[0]
@@ -240,6 +247,10 @@ class SimulatedSensorInterface(SensorInterface):
         self._last_time = 0.0
         self._frame = 0
         self.noise_sigma_mm = {"front": 4.0, "left": 9.0, "right": 9.0}
+        #: Distance (m) at which a carried object sits in the front beam.
+        #: Set while the gripper is loaded so the simulator reproduces the
+        #: real blinding instead of pretending the ToF stays clear.
+        self.payload_distance_m = None
 
     def _measure(self, spec, col, row, heading_deg):
         cell_size = self.transform.cell_size_m or 0.60
@@ -275,6 +286,9 @@ class SimulatedSensorInterface(SensorInterface):
 
         self._frame += 1
         front_mm, front_ok = values["front"]
+        if self.payload_distance_m is not None:
+            front_mm = self.payload_distance_m * 1000.0
+            front_ok = True
         left_mm, left_ok = values["left"]
         right_mm, right_ok = values["right"]
 

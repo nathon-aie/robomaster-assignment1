@@ -70,6 +70,10 @@ class OccupancyGrid(object):
         self.robot_dir = 0         # editor-placed robot start heading (dir index)
         self.place_cell = None     # where a carried object is put down
         self.place_dir = 0         # heading the robot faces while placing it
+        self.objects = set()       # cells holding a graspable object
+        #: Aim point inside that cell, as fractions of a cell in [-0.5, 0.5]
+        #: from its centre: +x is East, +y is South (screen axes).
+        self.place_offset = (0.0, 0.0)
         self.cell_size_m = 0.60
         self.resize(width, height, fill=fill)
 
@@ -114,6 +118,7 @@ class OccupancyGrid(object):
             self.robot_cell = None
         if not ok(self.place_cell):
             self.place_cell = None
+        self.objects = set(p for p in self.objects if ok(p))
         self.checkpoints = [p for p in self.checkpoints if ok(p)]
 
     def in_bounds(self, col, row):
@@ -302,6 +307,8 @@ class OccupancyGrid(object):
         self.robot_dir = 0
         self.place_cell = None
         self.place_dir = 0
+        self.place_offset = (0.0, 0.0)
+        self.objects = set()
 
     def rotate(self, quarter_turns=1):
         """Rotates the whole map in 90 degree steps (positive = clockwise).
@@ -348,8 +355,12 @@ class OccupancyGrid(object):
         self.robot_cell = move(*self.robot_cell) if self.robot_cell else None
         self.place_cell = move(*self.place_cell) if self.place_cell else None
         self.checkpoints = [move(*p) for p in self.checkpoints]
+        self.objects = set(move(*p) for p in self.objects)
         self.robot_dir = (self.robot_dir + 1) % 4
         self.place_dir = (self.place_dir + 1) % 4
+        # Clockwise on screen: (x, y) -> (-y, x)
+        off_x, off_y = self.place_offset
+        self.place_offset = (-off_y, off_x)
 
     def random_map(self, wall_density=0.28, seed=None):
         """Random maze-ish layout using interior edge walls."""
@@ -399,7 +410,9 @@ class OccupancyGrid(object):
             "robot": {"cell": list(self.robot_cell) if self.robot_cell else None,
                       "dir": self.robot_dir},
             "place": {"cell": list(self.place_cell) if self.place_cell else None,
-                      "dir": self.place_dir},
+                      "dir": self.place_dir,
+                      "offset": list(self.place_offset)},
+            "objects": [list(p) for p in sorted(self.objects)],
             "cells": [list(row) for row in self.cells],
             "walls": walls,
             "known_edges": [list(k) for k in sorted(self._known_edges, key=lambda x: (x[0], x[1], x[2]))],
@@ -458,6 +471,10 @@ class OccupancyGrid(object):
         pcell = place.get("cell")
         self.place_cell = (int(pcell[0]), int(pcell[1])) if pcell else None
         self.place_dir = int(place.get("dir", 0)) % 4
+        offset = place.get("offset") or [0.0, 0.0]
+        self.objects = set((int(p[0]), int(p[1])) for p in data.get("objects", []))
+        offset = place.get("offset") or (0.0, 0.0)
+        self.place_offset = (float(offset[0]), float(offset[1]))
         self._clamp_markers()
         return self
 
@@ -497,6 +514,8 @@ class OccupancyGrid(object):
                     ch = "C"
                 elif self.place_cell == (c, r):
                     ch = "P"
+                elif (c, r) in self.objects:
+                    ch = "o"
                 mid += " " + ch + " "
             top += "+"
             mid += "|" if self.has_wall(self.width - 1, r, 1) else " "

@@ -245,8 +245,13 @@ class RobotInterface(object):
         """Grabs the object in front of the robot."""
         return RobotCommandResult(False, "No gripper on this backend")
 
-    def place(self):
-        """Puts the carried object down in front of the robot."""
+    def place(self, offset_xy=None):
+        """Puts the carried object down.
+
+        ``offset_xy`` is an optional (forward, right) nudge in metres, applied
+        before releasing so the object lands on the aimed sub-cell spot rather
+        than wherever the robot happened to stop.
+        """
         return RobotCommandResult(False, "No gripper on this backend")
 
     # ------------------------------------------------------------------ sensors
@@ -537,7 +542,7 @@ class RealRobotInterface(RobotInterface):
         self.carrying = True
         return RobotCommandResult(True, "Picked up")
 
-    def place(self):
+    def place(self, offset_xy=None):
         refusal = self._motion_guard()
         if refusal is not None:
             return refusal
@@ -546,6 +551,12 @@ class RealRobotInterface(RobotInterface):
             return RobotCommandResult(False, "Gripper unavailable")
         try:
             chassis = self.system.robot.chassis if self.system.robot else None
+            if chassis is not None and offset_xy and any(offset_xy):
+                # Line the chassis up with the aimed spot inside the cell.
+                forward, right = offset_xy
+                action = chassis.move(x=forward, y=right, z=0, xy_speed=0.3)
+                if hasattr(action, "wait_for_completed"):
+                    action.wait_for_completed()
             controller.drop(chassis=chassis, back_cm=self.place_backoff_cm)
         except Exception as exc:
             return RobotCommandResult(False, "Place failed: {}".format(exc))
@@ -705,18 +716,46 @@ class SimRobotInterface(RobotInterface):
             return refusal
         if self.carrying:
             return RobotCommandResult(False, "Already carrying something")
+        target = self._object_in_front()
+        if target is None:
+            return RobotCommandResult(False, "Nothing within reach to pick up")
         time.sleep(0.4)
+        self.robot.ground_truth.objects.discard(target)
         self.carrying = True
+        # The payload now blocks the front beam, exactly as on the real robot.
+        if self._sensors is not None:
+            self._sensors.payload_distance_m = 0.12
         return RobotCommandResult(True, "Picked up (simulated)")
 
-    def place(self):
+    def _object_in_front(self):
+        """The simulated object the gripper could close on, if any."""
+        from .geometry import DIR_VECTORS, heading_to_dir
+
+        truth = getattr(self.robot, "ground_truth", None)
+        if truth is None or not getattr(truth, "objects", None):
+            return None
+        map_pose = self.robot.transform.robot_to_map(self.robot.pose())
+        cell = map_pose.cell
+        d_col, d_row = DIR_VECTORS[heading_to_dir(map_pose.heading_deg)]
+        for candidate in ((cell[0] + d_col, cell[1] + d_row), cell):
+            if candidate in truth.objects:
+                return candidate
+        return None
+
+    def place(self, offset_xy=None):
         refusal = self._motion_guard()
         if refusal is not None:
             return refusal
         if not self.carrying:
             return RobotCommandResult(False, "Nothing to place")
         time.sleep(0.4)
+        truth = getattr(self.robot, "ground_truth", None)
+        if truth is not None:
+            map_pose = self.robot.transform.robot_to_map(self.robot.pose())
+            truth.objects.add(map_pose.cell)
         self.carrying = False
+        if self._sensors is not None:
+            self._sensors.payload_distance_m = None
         return RobotCommandResult(True, "Placed (simulated)")
 
     def sensors(self):

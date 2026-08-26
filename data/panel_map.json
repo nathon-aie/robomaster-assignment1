@@ -23,6 +23,10 @@
     ],
     "dir": 0
   },
+  "place": {
+    "cell": null,
+    "dir": 0
+  },
   "cells": [
     [
       1,
@@ -339,7 +343,7 @@
       ],
       "walls": {
         "top": true,
-        "right": true,
+        "right": false,
         "bottom": false,
         "left": false
       }
@@ -353,7 +357,7 @@
         "top": false,
         "right": true,
         "bottom": false,
-        "left": true
+        "left": false
       }
     },
     {
@@ -662,11 +666,6 @@
       "v",
       3,
       3
-    ],
-    [
-      "v",
-      3,
-      4
     ],
     [
       "v",
