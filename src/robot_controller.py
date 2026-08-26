@@ -134,6 +134,14 @@ class RobotControllerThread(threading.Thread):
             tolerance_mm=20.0,  # 2cm tolerance as per REQ
         )
 
+        # Chassis watchdog: drive_speed is a *continuous* command - the wheels
+        # keep the last commanded velocity until told otherwise.  Passing a
+        # timeout makes the SDK stop the chassis if no new speed command
+        # arrives within this many seconds, so a stalled control loop brakes
+        # instead of driving into a wall.  (The timer lives in this process, so
+        # it does not survive a hard kill - see the atexit stop in panel/.)
+        self.drive_watchdog_sec: float = 0.4
+
         self.mock_actuator = MockRobotActuators() if mock_mode else None
         self.command_queue: List[str] = []
         self.current_action: str = "IDLE"
@@ -171,7 +179,10 @@ class RobotControllerThread(threading.Thread):
             try:
                 # RoboMaster EP chassis drive_speed
                 # Note: drive_speed accepts x=vx(m/s), y=vy(m/s), z=vz(deg/s)
-                self.robot.chassis.drive_speed(x=vx, y=vy, z=vz)
+                # timeout= arms the SDK's auto-stop watchdog (chassis.py).
+                self.robot.chassis.drive_speed(
+                    x=vx, y=vy, z=vz, timeout=self.drive_watchdog_sec
+                )
             except Exception as e:
                 print(f"[Controller] drive_speed error: {e}")
 

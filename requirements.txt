@@ -2,5 +2,8 @@
 numpy==1.24.4
 matplotlib==3.7.5
 
+# Pygame GUI: map planner (main.py map) and Mission Control (main.py panel)
+pygame==2.6.1
+
 # DJI RoboMaster SDK for EP
 robomaster @ git+https://github.com/dji-sdk/RoboMaster-SDK.git

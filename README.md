@@ -20,12 +20,25 @@
 │   ├── robot_controller.py       # Thread 2: ควบคุมการเคลื่อนที่ทีละ Grid และ Actuators
 │   ├── robot_system.py           # ตัวควบคุมหลัก (Master Orchestrator) จัดการ 2 Threads & SDK
 │   ├── telemetry.py              # ตัวบันทึกข้อมูล Time-series และวิเคราะห์สถิติพร้อมพลอตกราฟ
-│   └── map_planner.py            # GUI แผนที่จำลอง Grid + ระบบหาเส้นทาง A* (Pygame)
+│   ├── map_planner.py            # GUI แผนที่จำลอง Grid + ระบบหาเส้นทาง A* (Pygame)
+│   └── panel/                    # Step 4: RoboMaster Mission Control Center
+│       ├── geometry.py           # แปลงพิกัดหุ่น (m/deg) <-> พิกัดแผนที่ (grid cell)
+│       ├── occupancy.py          # Occupancy grid + กำแพงขอบช่อง + save/load JSON
+│       ├── pathfinding.py        # A* + จัดลำดับ Checkpoint (TSP) + metrics
+│       ├── robot_state.py        # RobotState มาตรฐาน, trail จริง, tracking timeout
+│       ├── sensors.py            # Sensor Interface: ของจริง (SensorHub) / จำลอง (raycast)
+│       ├── mapper.py             # อัลกอริทึม mapping ตัวเดียว ใช้ร่วมกันทั้ง 2 แหล่ง
+│       ├── explorer.py           # Frontier-based exploration planner (Auto Map)
+│       ├── robot_iface.py        # Real / Mock / Simulated Robot Interface
+│       ├── simulation.py         # SimRobot + Ground-truth map + Simulation Engine
+│       ├── mission.py            # Mission state machine + ระบบความปลอดภัยทั้งหมด
+│       └── ui/                   # Dashboard (app.py, map_view.py, widgets.py, theme.py)
 │
 ├── docs/                         # เอกสารอธิบายการทำงานแต่ละ Step โดยละเอียด
 │   ├── STEP1_CALIBRATION.md      # คู่มือ Step 1: การ Calibrate เซนเซอร์และหาสมการ Polynomial
 │   ├── STEP2_MULTITHREADING.md   # คู่มือ Step 2: สถาปัตยกรรม Multi-Threading (2 Threads)
-│   └── STEP3_PID.md              # คู่มือ Step 3: Closed-Loop PID Grid-by-Grid Navigation (8 Cases)
+│   ├── STEP3_PID.md              # คู่มือ Step 3: Closed-Loop PID Grid-by-Grid Navigation (8 Cases)
+│   └── STEP4_MISSION_CONTROL.md  # คู่มือ Step 4: Mission Control Center (Panel)
 │
 ├── data/                         # ข้อมูล Dataset และแผนที่
 │   ├── calibration_measurements.csv # ข้อมูลผลการวัดเพื่อใช้ Fitting สมการ
@@ -42,7 +55,8 @@
     ├── __init__.py
     ├── test_calibration.py       # ทดสอบฟังก์ชัน Fitting สมการ Calibration
     ├── test_multithreading.py    # ทดสอบ Concurrency & Thread-safety ของ 2 Threads
-    └── test_step3_pid.py         # ทดสอบสมการ PID Centering และ 8 Wall Cases
+    ├── test_step3_pid.py         # ทดสอบสมการ PID Centering และ 8 Wall Cases
+    └── test_panel.py             # ทดสอบ Mission Control: แผนที่/A*/mapping/tracking/UI
 ```
 
 ---
@@ -137,7 +151,47 @@ python3.8 -m venv .venv
 
 ---
 
-## 🧪 การรัน Automated Test Suite (20/20 Passed)
+### 8. RoboMaster Mission Control Center (Step 4)
+แผงควบคุมภารกิจเต็มรูปแบบ: วาดแผนที่, A*, Auto-Mapping ด้วยเซนเซอร์บนตัวหุ่น,
+simulation, และติดตามหุ่นจริงแบบ real-time
+```bash
+# โหมดจำลอง (ไม่แตะฮาร์ดแวร์)
+.venv/bin/python main.py panel
+
+# โหมดหุ่นจริง (ยังต้องกด CONNECT -> ARM -> RUN และยืนยันใน dialog ก่อนหุ่นจะขยับ)
+.venv/bin/python main.py panel --mode real --conn-type ap
+
+# โหลด/บันทึกแผนที่ของตัวเอง และตั้งขนาดช่อง Grid เอง
+.venv/bin/python main.py panel --map data/my_field.json --cell-size 0.60
+```
+> **ในหน้าต่าง Panel**:
+> - `MODE`: `SIM` / `REAL` / `MOCK` — สลับเป็น REAL ต้องยืนยันใน dialog เสมอ
+> - `CONNECT → ARM → RUN` : หุ่นจริงไม่ขยับเองเด็ดขาด
+> - `!! EMERGENCY STOP` (หรือ `F1`): อยู่มุมขวาบนตลอดเวลา
+> - แถบล่างจัดกลุ่มเป็น: ขนาดแผนที่ / `TOOLS` / `EDIT` / `ROTATE MAP` / `ROTATE ROBOT` /
+>   `FILE` / `PLAN` / `TURN ROBOT NOW` / `VIEW` / `SIM SPEED`
+> - เครื่องมือแผนที่: Select / Wall / Eraser / Start / Goal / Checkpoint / Robot / Obstacle
+>   (คลิกลากเพื่อวาดกำแพงยาว, คลิกขวาที่หุ่นเพื่อหมุนทิศเริ่มต้น)
+> - `ROTATE MAP`: หมุนทั้งแผนที่ 90° (กำแพง/Start/Goal/Checkpoint/หุ่น ไปพร้อมกัน, 6×9 → 9×6)
+> - `ROTATE ROBOT`: หมุนทิศเริ่มต้นบนแผนที่ | `TURN ROBOT NOW`: สั่งหุ่นจริงหมุนเดี๋ยวนี้ (ต้อง ARM)
+> - เครื่องมือ `Place` + ปุ่ม `CARRY`: ให้หุ่นไปหนีบขวดที่ Goal แล้วเอาไปวางที่จุด `P`
+>   โดยหันหน้าตามทิศที่กำหนด (คลิกซ้ำ/คลิกขวาที่จุด P เพื่อหมุนทิศ)
+> - `AUTO MAP` เดินครบทุกช่องที่ไปถึงได้ แล้ววางเส้นทาง A* ให้อัตโนมัติ
+> - `Space` = สร้างเส้นทาง A*, `AUTO MAP` = ให้หุ่นสำรวจแผนที่เอง
+> - `R` / `Shift+R` = หมุนหุ่น, `[` / `]` = หมุนแผนที่
+> - `Ctrl+S` / `Ctrl+L` = บันทึก / โหลดแผนที่, `1`–`8` = เลือกเครื่องมือ
+>
+>
+> **รันแบบออฟไลน์**: ไม่ต้องใช้อินเทอร์เน็ต — ต่อ Wi-Fi หุ่น (`RMEP-xxxxxx`) แล้วเปิดได้เลย
+> เปิดจาก terminal ของตัวเอง หรือดับเบิลคลิก `run_panel.bat`
+> **ห้ามเปิด panel จากใน session ของเครื่องมืออื่น** — ถ้า session นั้นถูก kill ตอนหุ่นกำลังวิ่ง
+> โปรเซสจะตายทั้งที่ความเร็วยังค้างในล้อ แล้วหุ่นจะวิ่งต่อจนชน
+>
+> รายละเอียดทั้งหมด: [docs/STEP4_MISSION_CONTROL.md](docs/STEP4_MISSION_CONTROL.md)
+
+---
+
+## 🧪 การรัน Automated Test Suite
 
 รันชุดทดสอบความถูกต้องของระบบทั้งหมด:
 ```bash
@@ -151,3 +205,4 @@ python3.8 -m venv .venv
 - 📖 [docs/STEP1_CALIBRATION.md](docs/STEP1_CALIBRATION.md) — รายละเอียดการ Calibrate เซนเซอร์ Sharp/ToF/Gripper
 - 📖 [docs/STEP2_MULTITHREADING.md](docs/STEP2_MULTITHREADING.md) — สถาปัตยกรรม Multi-threading (Producer-Consumer)
 - 📖 [docs/STEP3_PID.md](docs/STEP3_PID.md) — รายละเอียดระบบ PID Centering และตาราง 8 Wall Decision Cases
+- 📖 [docs/STEP4_MISSION_CONTROL.md](docs/STEP4_MISSION_CONTROL.md) — Mission Control Center: แผนที่, A*, Auto-Mapping, Simulation, Real-time Tracking, Safety

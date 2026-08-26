@@ -22,6 +22,11 @@ Usage:
 
     # 7. Map Planner: Launch interactive Pygame Grid Map & A* Planner
     python main.py map
+
+    # 8. Mission Control Center: full control panel (map editor, A*, auto-mapping,
+    #    simulation and real-robot tracking)
+    python main.py panel
+    python main.py panel --mode real --conn-type ap
 """
 
 import argparse
@@ -286,6 +291,47 @@ def cmd_map(args):
     launch_map_gui()
 
 
+def cmd_panel(args):
+    # Plain ASCII: a Windows console using a legacy code page raises
+    # UnicodeEncodeError on emoji before anything else has a chance to run.
+    print("=" * 65)
+    print("LAUNCHING ROBOMASTER MISSION CONTROL CENTER")
+    print("=" * 65)
+    from src.panel.mission import MODE_MOCK, MODE_REAL, MODE_SIM
+
+    try:
+        from src.panel.ui import run as launch_panel
+    except ImportError as exc:
+        if "pygame" not in str(exc):
+            raise
+        print("[Error] The control panel needs pygame, which is not installed.")
+        print("        Install it with:")
+        print("            python -m pip install pygame")
+        print("        (or re-install the project requirements:")
+        print("            python -m pip install -r requirements.txt )")
+        return 1
+
+    mode = {"sim": MODE_SIM, "real": MODE_REAL, "mock": MODE_MOCK}[args.mode]
+    try:
+        return launch_panel(
+            map_file=args.map,
+            mode=mode,
+            conn_type=args.conn_type,
+            cell_size=args.cell_size,
+            size=(args.window_width, args.window_height),
+        )
+    except Exception as exc:
+        import pygame
+
+        if isinstance(exc, pygame.error):
+            print("[Error] Could not open a window: {}".format(exc))
+            print("        A display is required. Over SSH/WSL, set up an X server,")
+            print("        or run the headless tests instead:")
+            print("            python -m unittest tests.test_panel")
+            return 1
+        raise
+
+
 def main():
     parser = argparse.ArgumentParser(description="RoboMaster EP Autonomous Navigation System (Steps 1-3)")
     subparsers = parser.add_subparsers(dest="command", required=True)
@@ -362,6 +408,16 @@ def main():
     # 8. Map GUI
     subparsers.add_parser("map", help="Launch interactive Grid Map & A* Planner GUI")
 
+    # 9. Mission Control Center
+    panel_p = subparsers.add_parser("panel", help="Launch the RoboMaster Mission Control Center")
+    panel_p.add_argument("--map", default="data/panel_map.json", help="Map file to load/save")
+    panel_p.add_argument("--mode", choices=("sim", "real", "mock"), default="sim",
+                         help="Start-up mode (real robot must still be connected and armed)")
+    panel_p.add_argument("--conn-type", choices=("ap", "sta"), default="ap")
+    panel_p.add_argument("--cell-size", type=float, default=0.60, help="Grid cell size in metres")
+    panel_p.add_argument("--window-width", type=int, default=1600)
+    panel_p.add_argument("--window-height", type=int, default=1000)
+
     args = parser.parse_args()
 
     if args.command == "simulate":
@@ -380,6 +436,8 @@ def main():
         return cmd_calibrate(args)
     elif args.command == "map":
         return cmd_map(args)
+    elif args.command == "panel":
+        return cmd_panel(args)
     return 0
 
 
