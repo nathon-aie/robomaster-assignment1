@@ -18,8 +18,8 @@ import time
 from pathlib import Path
 
 
-SENSORS = ("sharp_left", "sharp_right", "tof", "gripper")
-DEFAULT_DEGREES = {"sharp_left": 2, "sharp_right": 2, "tof": 1, "gripper": 1}
+SENSORS = ("sharp_left", "sharp_right")
+DEFAULT_DEGREES = {"sharp_left": 2, "sharp_right": 2}
 
 
 def read_measurements(path):
@@ -159,19 +159,14 @@ def load_robot_sdk():
         raise RuntimeError("RoboMaster SDK is not installed correctly: {}".format(exc))
 
 
-def collect_live(sensor, output, board_id, port, tof_index, samples, conn_type):
-    """Collect raw values from a connected EP and append them to CSV."""
+def collect_live(sensor, output, board_id, port, samples, conn_type):
+    """Collect raw ADC values from a connected EP Sharp sensor and append them to CSV."""
     robot = load_robot_sdk()
     ep_robot = robot.Robot()
-    latest_tof = [None]
-
-    def tof_callback(distance):
-        if tof_index >= len(distance):
-            raise ValueError("tof index {} is not present in {}".format(tof_index, distance))
-        latest_tof[0] = distance[tof_index]
+    c_mode = sys.intern("sta") if str(conn_type).lower() == "sta" else sys.intern("ap")
 
     try:
-        ep_robot.initialize(conn_type=conn_type)
+        ep_robot.initialize(conn_type=c_mode)
         if sensor in ("sharp_left", "sharp_right"):
             sensor_id = 1 if sensor == "sharp_left" else 2
             sensor_port = port if port is not None else sensor_id
@@ -182,19 +177,8 @@ def collect_live(sensor, output, board_id, port, tof_index, samples, conn_type):
                     raise RuntimeError("sensor adapter returned no ADC value")
                 append_measurement(output, sensor, raw, reference, sample_id)
                 print("saved raw={} reference={}mm".format(raw, reference))
-        elif sensor == "tof":
-            ep_robot.sensor.sub_distance(freq=10, callback=tof_callback)
-            time.sleep(0.5)
-            for sample_id in range(1, samples + 1):
-                reference = float(input("tof sample {} reference distance (mm): ".format(sample_id)))
-                time.sleep(0.2)
-                if latest_tof[0] is None:
-                    raise RuntimeError("no ToF callback value received")
-                append_measurement(output, sensor, latest_tof[0], reference, sample_id)
-                print("saved raw={} reference={}mm".format(latest_tof[0], reference))
-            ep_robot.sensor.unsub_distance()
         else:
-            raise ValueError("live collection supports sharp_left, sharp_right, and tof; gripper position must be measured manually")
+            raise ValueError("live collection only supports sharp_left and sharp_right")
     finally:
         ep_robot.close()
 
@@ -212,7 +196,7 @@ def fit_command(input_path, output_dir):
         calibration["sensors"][sensor] = fit
         plot_sensor(sensor, sensor_rows, fit, output_dir / (sensor + "_calibration.png"))
     if not calibration["sensors"]:
-        raise ValueError("CSV has no supported sensor measurements")
+        raise ValueError("CSV has no supported Sharp sensor measurements")
     result = output_dir / "calibration.json"
     result.write_text(json.dumps(calibration, indent=2) + "\n", encoding="utf-8")
     print("wrote {}".format(result))
@@ -221,16 +205,15 @@ def fit_command(input_path, output_dir):
 
 
 def main():
-    parser = argparse.ArgumentParser(description="RoboMaster EP Step 1 calibration")
+    parser = argparse.ArgumentParser(description="RoboMaster EP Step 1 Sharp Sensor calibration")
     subparsers = parser.add_subparsers(dest="command", required=True)
     init_parser = subparsers.add_parser("init-csv", help="create a measurement CSV template")
     init_parser.add_argument("path", nargs="?", default="data/calibration_measurements.csv")
-    live_parser = subparsers.add_parser("collect-live", help="collect Sharp/ToF values from a connected EP")
-    live_parser.add_argument("sensor", choices=("sharp_left", "sharp_right", "tof"))
+    live_parser = subparsers.add_parser("collect-live", help="collect Sharp values from a connected EP")
+    live_parser.add_argument("sensor", choices=("sharp_left", "sharp_right"))
     live_parser.add_argument("--output", default="data/calibration_measurements.csv")
     live_parser.add_argument("--board-id", type=int, help="sensor-adapter board ID; defaults to 1/2 from REQ")
     live_parser.add_argument("--port", type=int, help="sensor-adapter port; defaults to 1/2 from REQ")
-    live_parser.add_argument("--tof-index", type=int, default=0, help="ToF array index, 0-based")
     live_parser.add_argument("--samples", type=int, default=10)
     live_parser.add_argument("--conn-type", choices=("ap", "sta"), default="ap")
     fit_parser = subparsers.add_parser("fit", help="fit calibration curves and save plots")
@@ -241,7 +224,7 @@ def main():
         if args.command == "init-csv":
             init_csv(args.path)
         elif args.command == "collect-live":
-            collect_live(args.sensor, args.output, args.board_id, args.port, args.tof_index, args.samples, args.conn_type)
+            collect_live(args.sensor, args.output, args.board_id, args.port, args.samples, args.conn_type)
         else:
             fit_command(args.input, args.output_dir)
     except (OSError, RuntimeError, ValueError) as exc:

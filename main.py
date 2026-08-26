@@ -1,50 +1,39 @@
 #!/usr/bin/env python3
-"""RoboMaster EP Autonomous Grid Navigation System - Master CLI Entry Point.
+"""RoboMaster EP Autonomous Grid Navigation System - Master CLI.
 
-Usage:
-    # 1. Step 3: Run live robot navigation with PID
-    python main.py run --conn-type ap --plan data/robot_map_plan.json
-
-    # 2. Step 3: Run simulation / dry-run with PID
-    python main.py simulate --plan data/robot_map_plan.json
-
-    # 3. Step 3: Test single grid cell move with PID centering
-    python main.py step-test --cells 1 --conn-type ap
-
-    # 4. Step 2: Live monitor sensors (Thread 1)
-    python main.py monitor --conn-type ap
-
-    # 5. Step 2: Analyze post-run telemetry
-    python main.py analyze telemetry_logs/run1
-    # or python main.py analyze telemetry_logs/run1/run1.json
-
-    # 6. Step 1: Fit sensor calibration curves
-    python main.py calibrate fit data/calibration_measurements.csv
-
-    # 7. Map Planner: Launch interactive Pygame Grid Map & A* Planner
-    python main.py map
+Quick Commands:
+    ./run sim               # Run dry-run simulation
+    ./run map               # Open interactive Map Planner GUI
+    ./run step 1            # Test move forward 1 cell (60 cm)
+    ./run turn right        # Test turn right (+90 deg)
+    ./run mon               # Live stream sensor telemetry
+    ./run ana               # Analyze latest telemetry run log
+    ./run run               # Run autonomous navigation on live robot
 """
 
 import argparse
+import json
 import os
 import signal
 import sys
 import time
 from pathlib import Path
+from typing import List, Optional
 
-# Add src to sys.path
+# Ensure src is in sys.path
 _SRC_DIR = Path(__file__).resolve().parent / "src"
 if str(_SRC_DIR) not in sys.path:
     sys.path.insert(0, str(_SRC_DIR))
 
-
-import json
-from typing import List
-
+from src.config_loader import load_settings
 from src.gripper_controller import SimpleGripperController
 from src.robot_system import RobotSystem
 from src.telemetry import TelemetryAnalyzer
 
+
+# ---------------------------------------------------------------------------
+# Utility Functions
+# ---------------------------------------------------------------------------
 
 def parse_custom_commands(cmd_input: str) -> List[str]:
     """Parses arbitrary command string or JSON list into robot controller commands."""
@@ -81,6 +70,7 @@ def parse_custom_commands(cmd_input: str) -> List[str]:
 
 
 def confirm_action(prompt: str, auto_yes: bool = False) -> bool:
+    """Prompts user for confirmation [y/N], or bypasses if auto_yes is True."""
     if auto_yes:
         return True
     try:
@@ -93,7 +83,36 @@ def confirm_action(prompt: str, auto_yes: bool = False) -> bool:
         return False
 
 
-def run_pick_and_wait_for_navigation(sys_runner: RobotSystem, args):
+def resolve_telemetry_target(target: Optional[str] = None) -> str:
+    """Resolves telemetry target path or finds the latest run automatically."""
+    logs_dir = Path("telemetry_logs")
+    if not target or target.strip() == "":
+        if logs_dir.exists():
+            runs = [d for d in logs_dir.iterdir() if d.is_dir() and d.name.startswith("run")]
+            if runs:
+                runs.sort(key=lambda d: d.stat().st_mtime)
+                latest = runs[-1]
+                print(f"[main] Auto-selected latest run: {latest}")
+                return str(latest)
+            json_files = list(logs_dir.glob("*.json"))
+            if json_files:
+                json_files.sort(key=lambda f: f.stat().st_mtime)
+                return str(json_files[-1])
+        return "telemetry_logs"
+
+    if target.isdigit():
+        candidate = logs_dir / f"run{target}"
+        if candidate.exists():
+            return str(candidate)
+
+    if (logs_dir / target).exists():
+        return str(logs_dir / target)
+
+    return target
+
+
+def run_pick_and_wait_for_navigation(sys_runner: RobotSystem, args) -> Optional[bool]:
+    """Orchestrates Pick -> Map Follow -> Drop workflow."""
     gripper_ctrl = SimpleGripperController(
         ep_robot=sys_runner.robot,
         dry_run=sys_runner.mock_mode,
@@ -123,13 +142,13 @@ def run_pick_and_wait_for_navigation(sys_runner: RobotSystem, args):
         sys_runner.thread_2_controller.set_commands([f"Move Backward: {args.backward_cm} cm"])
 
     if sys_runner.thread_2_controller:
-        sys_runner.thread_2_controller.base_speed = args.speed
-        sys_runner.thread_2_controller.wall_pid.nominal_side_dist_mm = args.nominal_side
+        sys_runner.thread_2_controller.base_speed = getattr(args, "speed", 0.25)
+        sys_runner.thread_2_controller.wall_pid.nominal_side_dist_mm = getattr(args, "nominal_side", 140.0)
 
-    # 3. Start multi-threading navigation
+    # 3. Start navigation
     sys_runner.start()
     reached_goal = sys_runner.wait_for_completion(
-        timeout=args.duration if args.duration > 0 else None
+        timeout=args.duration if getattr(args, "duration", 0.0) > 0 else None
     )
 
     # 4. Drop sequence at goal
@@ -141,9 +160,13 @@ def run_pick_and_wait_for_navigation(sys_runner: RobotSystem, args):
     return reached_goal
 
 
+# ---------------------------------------------------------------------------
+# CLI Command Handlers
+# ---------------------------------------------------------------------------
+
 def cmd_simulate(args):
     print("=" * 65)
-    print("🤖 STARTING STEP 3 MULTI-THREADING SIMULATION (PID GRID NAVIGATION)")
+    print("🤖 STARTING MULTI-THREADING SIMULATION (STEP 3 PID NAVIGATION)")
     print("=" * 65)
     sys_runner = RobotSystem(
         calibration_file=args.calibration,
@@ -166,7 +189,7 @@ def cmd_simulate(args):
 
 def cmd_run(args):
     print("=" * 65)
-    print("🤖 STARTING STEP 3 LIVE MULTI-THREADING RUN (PID GRID CONTROL)")
+    print("🤖 STARTING LIVE AUTONOMOUS NAVIGATION (PID GRID CONTROL)")
     print("=" * 65)
     sys_runner = RobotSystem(
         calibration_file=args.calibration,
@@ -193,8 +216,9 @@ def cmd_run(args):
 
 
 def cmd_step_test(args):
+    cells = args.cells
     print("=" * 65)
-    print(f"🎯 TESTING {args.cells} GRID CELL(S) WITH STEP 3 PID CENTERING")
+    print(f"🎯 TESTING {cells} GRID CELL(S) (60x60 cm) WITH PID CENTERING")
     print("=" * 65)
     sys_runner = RobotSystem(
         calibration_file=args.calibration,
@@ -208,7 +232,7 @@ def cmd_step_test(args):
     if sys_runner.thread_2_controller:
         sys_runner.thread_2_controller.base_speed = args.speed
         sys_runner.thread_2_controller.wall_pid.nominal_side_dist_mm = args.nominal_side
-        sys_runner.thread_2_controller.set_commands([f"Move Forward: {args.cells} cells"])
+        sys_runner.thread_2_controller.set_commands([f"Move Forward: {cells} cells"])
 
     def sig_handler(sig, frame):
         print("\nInterrupt received. Stopping...")
@@ -223,15 +247,12 @@ def cmd_step_test(args):
 
 def cmd_turn_test(args):
     direction_str = str(args.direction).lower()
-    if direction_str == "left":
-        deg = 90.0
-        cmd_text = "Turn Left (90 deg)"
-    elif direction_str == "right":
-        deg = -90.0
-        cmd_text = "Turn Right (90 deg)"
-    elif direction_str == "around":
-        deg = 180.0
-        cmd_text = "Turn Around (180 deg)"
+    if direction_str in ("left", "l"):
+        deg, cmd_text = 90.0, "Turn Left (90 deg)"
+    elif direction_str in ("right", "r"):
+        deg, cmd_text = -90.0, "Turn Right (90 deg)"
+    elif direction_str in ("around", "a", "180"):
+        deg, cmd_text = 180.0, "Turn Around (180 deg)"
     else:
         try:
             deg = float(direction_str)
@@ -266,6 +287,30 @@ def cmd_turn_test(args):
     sys_runner.wait_for_completion(timeout=15.0)
     sys_runner.shutdown()
     return 0
+
+
+def cmd_gripper_action(action_name: str, args):
+    """Directly controls gripper pick or drop."""
+    print("=" * 65)
+    print(f"🦾 EXECUTING GRIPPER {action_name.upper()}")
+    print("=" * 65)
+    sys_runner = RobotSystem(mock_mode=args.mock, conn_type=args.conn_type)
+    sys_runner.connect_robot()
+    ctrl = SimpleGripperController(ep_robot=sys_runner.robot, dry_run=sys_runner.mock_mode)
+
+    try:
+        if action_name == "pick":
+            ctrl.pick(extend_cm=args.extend_cm, lift_cm=args.lift_cm)
+        elif action_name == "drop":
+            ctrl.drop(chassis=sys_runner.robot.chassis if sys_runner.robot else None, back_cm=args.back_cm)
+        elif action_name == "open":
+            ctrl.open()
+        elif action_name == "close":
+            ctrl.close()
+        elif action_name == "recenter":
+            ctrl.recenter()
+    finally:
+        sys_runner.shutdown(save_telemetry=False)
 
 
 def cmd_monitor(args):
@@ -305,135 +350,204 @@ def cmd_monitor(args):
 
 
 def cmd_analyze(args):
-    print(f"Analyzing telemetry log: {args.file}")
-    TelemetryAnalyzer.analyze_file(args.file, save_plot=not args.no_plot)
+    target = resolve_telemetry_target(args.file)
+    print(f"📊 Analyzing telemetry: {target}")
+    TelemetryAnalyzer.analyze_file(target, save_plot=not args.no_plot)
 
 
 def cmd_calibrate(args):
-    try:
-        from src.calibrate import collect_live, fit_command, init_csv
-    except ImportError:
-        from calibrate import collect_live, fit_command, init_csv
-    if args.cal_cmd == "init-csv":
+    from src.calibrate import collect_live, fit_command, init_csv
+    if args.cal_cmd in ("init-csv", "init"):
         init_csv(args.path)
-    elif args.cal_cmd == "collect-live":
-        collect_live(args.sensor, args.output, args.board_id, args.port, args.tof_index, args.samples, args.conn_type)
-    elif args.cal_cmd == "fit":
+    elif args.cal_cmd in ("collect-live", "collect"):
+        collect_live(args.sensor, args.output, args.board_id, args.port, args.samples, args.conn_type)
+    elif args.cal_cmd in ("fit", "f"):
         fit_command(args.input, args.output_dir)
 
 
 def cmd_map(args):
-    print("Launching Pygame Grid Map & A* Path Planner...")
+    print("🗺️ Launching Pygame Grid Map & A* Path Planner...")
     from src.map_planner import main as launch_map_gui
     launch_map_gui()
 
 
-def main():
-    parser = argparse.ArgumentParser(description="RoboMaster EP Autonomous Navigation System (Steps 1-3)")
-    subparsers = parser.add_subparsers(dest="command", required=True)
+# ---------------------------------------------------------------------------
+# CLI Argument Parser Setup
+# ---------------------------------------------------------------------------
 
-    # 1. Run live
-    run_p = subparsers.add_parser("run", help="Run live robot navigation with Step 3 PID")
-    run_p.add_argument("--plan", default="data/robot_map_plan.json", help="Path to map plan json")
-    run_p.add_argument("--commands", default="", help="Custom comma-separated command sequence (e.g. 'fwd 1, left, fwd 1')")
-    run_p.add_argument("--calibration", default="calibration_output/calibration.json")
-    run_p.add_argument("--conn-type", choices=("ap", "sta"), default="ap")
-    run_p.add_argument("--rate", type=float, default=20.0, help="Sensor collection rate Hz")
-    run_p.add_argument("--speed", type=float, default=0.25, help="Base cruising speed (m/s)")
-    run_p.add_argument("--nominal-side", type=float, default=140.0, help="Nominal distance to single wall (mm)")
-    run_p.add_argument("--duration", type=float, default=0.0, help="Max duration in seconds")
-    run_p.add_argument("--backward-cm", type=float, help="Run one backward move for this distance in cm")
-    run_p.add_argument("--extend-cm", type=float, default=7.0, help="Arm extension during pick")
-    run_p.add_argument("--lift-cm", type=float, default=10.0, help="Arm lift during pick")
-    run_p.add_argument("--skip-pick", action="store_true", help="Skip initial gripper pick")
-    run_p.add_argument("--skip-drop", action="store_true", help="Skip final gripper drop")
-    run_p.add_argument("-y", "--yes", action="store_true", help="Auto-confirm all interactive prompts")
-    run_p.add_argument("--allow-mock-fallback", action="store_true", help="Fallback to mock if robot unavailable")
+def print_help_menu():
+    """Prints a friendly dashboard of all quick commands."""
+    print("""
+🤖 RoboMaster EP Navigation System — Quick Command Menu
 
-    # 2. Simulate
-    sim_p = subparsers.add_parser("simulate", help="Run simulation / dry-run with Step 3 PID")
-    sim_p.add_argument("--plan", default="data/robot_map_plan.json", help="Path to map plan json")
-    sim_p.add_argument("--commands", default="", help="Custom comma-separated command sequence (e.g. 'fwd 1, left, fwd 1')")
-    sim_p.add_argument("--calibration", default="calibration_output/calibration.json")
-    sim_p.add_argument("--rate", type=float, default=20.0, help="Sensor collection rate Hz")
-    sim_p.add_argument("--speed", type=float, default=0.25, help="Base cruising speed (m/s)")
-    sim_p.add_argument("--nominal-side", type=float, default=140.0, help="Nominal distance to single wall (mm)")
-    sim_p.add_argument("--duration", type=float, default=0.0, help="Max duration in seconds")
-    sim_p.add_argument("--backward-cm", type=float, help="Run one backward move for this distance in cm")
-    sim_p.add_argument("--extend-cm", type=float, default=7.0, help="Arm extension during pick")
-    sim_p.add_argument("--lift-cm", type=float, default=10.0, help="Arm lift during pick")
-    sim_p.add_argument("--skip-pick", action="store_true", help="Skip initial gripper pick")
-    sim_p.add_argument("--skip-drop", action="store_true", help="Skip final gripper drop")
-    sim_p.add_argument("-y", "--yes", action="store_true", help="Auto-confirm all interactive prompts")
+Usage:
+    python main.py <command> [options]   or   ./run <command>
 
-    # 3. Step-test
-    step_p = subparsers.add_parser("step-test", help="Test N grid cell move with PID centering")
-    step_p.add_argument("--cells", type=int, default=1, help="Number of cells to move")
-    step_p.add_argument("--conn-type", choices=("ap", "sta"), default="ap")
-    step_p.add_argument("--calibration", default="calibration_output/calibration.json")
-    step_p.add_argument("--rate", type=float, default=20.0)
-    step_p.add_argument("--speed", type=float, default=0.20)
-    step_p.add_argument("--nominal-side", type=float, default=140.0)
-    step_p.add_argument("--mock", action="store_true")
+Commands:
+    sim, simulate       Run dry-run simulation (no robot needed)
+    run, r              Run autonomous navigation on live robot
+    step, st [N]        Step forward N cells (default: 1 cell / 60 cm)
+    turn, t [DIR]       Turn robot: right, left, around (default: right)
+    map, m              Open interactive Grid Map & A* Path Planner GUI
+    mon, live           Live stream sensor telemetry from Thread 1
+    ana, a [RUN]        Analyze telemetry logs (auto-picks latest run if omitted)
+    pick                Execute gripper pick sequence
+    drop                Execute gripper drop sequence
+    cal, calibrate      Sharp IR sensor calibration tools (Step 1)
 
-    # 4. Turn-test
-    turn_p = subparsers.add_parser("turn-test", help="Test in-place turn (+90 right, -90 left, 180 around)")
-    turn_p.add_argument("--direction", choices=("left", "right", "around"), default="right", help="Turn direction: left (z=-90), right (z=+90), around (z=180)")
-    turn_p.add_argument("--conn-type", choices=("ap", "sta"), default="ap")
-    turn_p.add_argument("--calibration", default="calibration_output/calibration.json")
-    turn_p.add_argument("--rate", type=float, default=20.0)
+Examples:
+    python main.py sim
+    python main.py map
+    python main.py step 1
+    python main.py turn right
+    python main.py mon
+    python main.py ana
+    python main.py run -y
+""")
+
+
+def build_parser() -> argparse.ArgumentParser:
+    cfg = load_settings()
+    r_cfg = cfg.get("robot", {})
+    s_cfg = cfg.get("sensor_pipeline", {})
+    c_cfg = cfg.get("controller", {})
+    g_cfg = cfg.get("gripper", {})
+    sys_cfg = cfg.get("system", {})
+
+    parser = argparse.ArgumentParser(
+        description="RoboMaster EP Autonomous Grid Navigation System",
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+    )
+    subparsers = parser.add_subparsers(dest="command")
+
+    # 1. Run live (aliases: run, r)
+    run_p = subparsers.add_parser("run", aliases=["r"], help="Run live robot autonomous navigation")
+    run_p.add_argument("--plan", default=sys_cfg.get("default_plan_file", "data/robot_map_plan.json"), help="Map plan JSON path")
+    run_p.add_argument("--commands", default="", help="Custom comma-separated command list")
+    run_p.add_argument("--calibration", default=s_cfg.get("calibration_file", "calibration_output/calibration.json"))
+    run_p.add_argument("--conn-type", choices=("ap", "sta"), default=r_cfg.get("conn_type", "ap"), help="Connection mode (default: ap)")
+    run_p.add_argument("--rate", type=float, default=s_cfg.get("sensor_rate_hz", 20.0), help="Sensor rate Hz")
+    run_p.add_argument("--speed", type=float, default=c_cfg.get("cruising_speed", 0.25), help="Speed m/s")
+    run_p.add_argument("--nominal-side", type=float, default=c_cfg.get("nominal_side_dist_mm", 140.0), help="Nominal wall distance mm")
+    run_p.add_argument("--duration", type=float, default=0.0, help="Timeout in seconds")
+    run_p.add_argument("--backward-cm", type=float, help="Initial backward move cm")
+    run_p.add_argument("--extend-cm", type=float, default=g_cfg.get("extend_cm", 7.0), help="Arm extension cm")
+    run_p.add_argument("--lift-cm", type=float, default=g_cfg.get("lift_cm", 10.0), help="Arm lift cm")
+    run_p.add_argument("--skip-pick", action="store_true", help="Skip initial pick sequence")
+    run_p.add_argument("--skip-drop", action="store_true", help="Skip final drop sequence")
+    run_p.add_argument("-y", "--yes", action="store_true", help="Auto-confirm all prompts")
+    run_p.add_argument("--allow-mock-fallback", action="store_true", help="Fallback to mock if connection fails")
+
+    # 2. Simulate (aliases: simulate, sim, s)
+    sim_p = subparsers.add_parser("simulate", aliases=["sim", "s"], help="Run simulation / dry-run")
+    sim_p.add_argument("--plan", default=sys_cfg.get("default_plan_file", "data/robot_map_plan.json"), help="Map plan JSON path")
+    sim_p.add_argument("--commands", default="", help="Custom comma-separated command list")
+    sim_p.add_argument("--calibration", default=s_cfg.get("calibration_file", "calibration_output/calibration.json"))
+    sim_p.add_argument("--rate", type=float, default=s_cfg.get("sensor_rate_hz", 20.0), help="Sensor rate Hz")
+    sim_p.add_argument("--speed", type=float, default=c_cfg.get("cruising_speed", 0.25), help="Speed m/s")
+    sim_p.add_argument("--nominal-side", type=float, default=c_cfg.get("nominal_side_dist_mm", 140.0), help="Nominal wall distance mm")
+    sim_p.add_argument("--duration", type=float, default=0.0, help="Timeout in seconds")
+    sim_p.add_argument("--backward-cm", type=float, help="Initial backward move cm")
+    sim_p.add_argument("--extend-cm", type=float, default=g_cfg.get("extend_cm", 7.0), help="Arm extension cm")
+    sim_p.add_argument("--lift-cm", type=float, default=g_cfg.get("lift_cm", 10.0), help="Arm lift cm")
+    sim_p.add_argument("--skip-pick", action="store_true", help="Skip initial pick sequence")
+    sim_p.add_argument("--skip-drop", action="store_true", help="Skip final drop sequence")
+    sim_p.add_argument("-y", "--yes", action="store_true", help="Auto-confirm all prompts")
+
+    # 3. Step-test (aliases: step-test, step, st)
+    step_p = subparsers.add_parser("step-test", aliases=["step", "st"], help="Test N grid cell move with PID")
+    step_p.add_argument("cells", nargs="?", type=int, default=1, help="Number of cells to move (default: 1)")
+    step_p.add_argument("--conn-type", choices=("ap", "sta"), default=r_cfg.get("conn_type", "ap"))
+    step_p.add_argument("--calibration", default=s_cfg.get("calibration_file", "calibration_output/calibration.json"))
+    step_p.add_argument("--rate", type=float, default=s_cfg.get("sensor_rate_hz", 20.0))
+    step_p.add_argument("--speed", type=float, default=c_cfg.get("cruising_speed", 0.25))
+    step_p.add_argument("--nominal-side", type=float, default=c_cfg.get("nominal_side_dist_mm", 140.0))
+    step_p.add_argument("--mock", action="store_true", help="Run in mock mode")
+
+    # 4. Turn-test (aliases: turn-test, turn, t)
+    turn_p = subparsers.add_parser("turn-test", aliases=["turn", "t"], help="Test in-place turn (right, left, around)")
+    turn_p.add_argument("direction", nargs="?", default="right", help="Direction: right, left, around, or degrees (default: right)")
+    turn_p.add_argument("--conn-type", choices=("ap", "sta"), default=r_cfg.get("conn_type", "ap"))
+    turn_p.add_argument("--calibration", default=s_cfg.get("calibration_file", "calibration_output/calibration.json"))
+    turn_p.add_argument("--rate", type=float, default=s_cfg.get("sensor_rate_hz", 20.0))
     turn_p.add_argument("--mock", action="store_true")
 
-    # 5. Monitor
-    mon_p = subparsers.add_parser("monitor", help="Live stream sensor telemetry (Thread 1)")
-    mon_p.add_argument("--conn-type", choices=("ap", "sta"), default="ap")
-    mon_p.add_argument("--calibration", default="calibration_output/calibration.json")
-    mon_p.add_argument("--rate", type=float, default=20.0)
-    mon_p.add_argument("--mock", action="store_true", help="Monitor mock data")
+    # 5. Gripper direct controls (pick, drop, open, close, recenter)
+    pick_p = subparsers.add_parser("pick", help="Run gripper pick sequence")
+    pick_p.add_argument("--extend-cm", type=float, default=g_cfg.get("extend_cm", 7.0))
+    pick_p.add_argument("--lift-cm", type=float, default=g_cfg.get("lift_cm", 10.0))
+    pick_p.add_argument("--conn-type", default=r_cfg.get("conn_type", "ap"))
+    pick_p.add_argument("--mock", action="store_true")
 
-    # 6. Analyze
-    ana_p = subparsers.add_parser("analyze", help="Analyze telemetry log and generate graphs")
-    ana_p.add_argument("file", help="Path to telemetry JSON file or run folder (e.g. telemetry_logs/run1)")
+    drop_p = subparsers.add_parser("drop", help="Run gripper drop sequence")
+    drop_p.add_argument("--back-cm", type=float, default=g_cfg.get("drop_backup_cm", 30.0))
+    drop_p.add_argument("--conn-type", default=r_cfg.get("conn_type", "ap"))
+    drop_p.add_argument("--mock", action="store_true")
+
+    # 6. Monitor (aliases: monitor, mon, live)
+    mon_p = subparsers.add_parser("monitor", aliases=["mon", "live"], help="Live stream sensor telemetry")
+    mon_p.add_argument("--conn-type", choices=("ap", "sta"), default=r_cfg.get("conn_type", "ap"))
+    mon_p.add_argument("--calibration", default=s_cfg.get("calibration_file", "calibration_output/calibration.json"))
+    mon_p.add_argument("--rate", type=float, default=s_cfg.get("sensor_rate_hz", 20.0))
+    mon_p.add_argument("--mock", action="store_true")
+
+    # 7. Analyze (aliases: analyze, ana, a)
+    ana_p = subparsers.add_parser("analyze", aliases=["ana", "a"], help="Analyze telemetry log and generate graphs")
+    ana_p.add_argument("file", nargs="?", default=None, help="Path or run number (e.g. 1, run1, or telemetry_logs/run1). Auto-picks latest if omitted.")
     ana_p.add_argument("--no-plot", action="store_true", help="Skip plot generation")
 
-    # 7. Calibrate
-    cal_p = subparsers.add_parser("calibrate", help="Sensor calibration tools (Step 1)")
+    # 8. Calibrate (aliases: calibrate, cal)
+    cal_p = subparsers.add_parser("calibrate", aliases=["cal"], help="Sharp IR sensor calibration tools (Step 1)")
     cal_sub = cal_p.add_subparsers(dest="cal_cmd", required=True)
-    c_init = cal_sub.add_parser("init-csv", help="create CSV template")
+    c_init = cal_sub.add_parser("init-csv", aliases=["init"], help="Create CSV template")
     c_init.add_argument("path", nargs="?", default="data/calibration_measurements.csv")
-    c_live = cal_sub.add_parser("collect-live", help="collect live sensor values")
-    c_live.add_argument("sensor", choices=("sharp_left", "sharp_right", "tof"))
+    c_live = cal_sub.add_parser("collect-live", aliases=["collect"], help="Collect live Sharp sensor values")
+    c_live.add_argument("sensor", choices=("sharp_left", "sharp_right"))
     c_live.add_argument("--output", default="data/calibration_measurements.csv")
     c_live.add_argument("--board-id", type=int)
     c_live.add_argument("--port", type=int)
-    c_live.add_argument("--tof-index", type=int, default=0)
     c_live.add_argument("--samples", type=int, default=10)
-    c_live.add_argument("--conn-type", choices=("ap", "sta"), default="ap")
-    c_fit = cal_sub.add_parser("fit", help="fit polynomial curves")
-    c_fit.add_argument("input", default="data/calibration_measurements.csv")
+    c_live.add_argument("--conn-type", choices=("ap", "sta"), default=r_cfg.get("conn_type", "ap"))
+    c_fit = cal_sub.add_parser("fit", aliases=["f"], help="Fit polynomial curves")
+    c_fit.add_argument("input", nargs="?", default="data/calibration_measurements.csv")
     c_fit.add_argument("--output-dir", default="calibration_output")
 
-    # 8. Map GUI
-    subparsers.add_parser("map", help="Launch interactive Grid Map & A* Planner GUI")
+    # 9. Map GUI (aliases: map, m)
+    subparsers.add_parser("map", aliases=["m"], help="Launch interactive Grid Map & A* Planner GUI")
 
+    return parser
+
+
+def main():
+    if len(sys.argv) == 1:
+        print_help_menu()
+        return 0
+
+    parser = build_parser()
     args = parser.parse_args()
 
-    if args.command == "simulate":
-        return cmd_simulate(args)
-    elif args.command == "run":
+    cmd = args.command
+    if cmd in ("run", "r"):
         return cmd_run(args)
-    elif args.command == "step-test":
+    elif cmd in ("simulate", "sim", "s"):
+        return cmd_simulate(args)
+    elif cmd in ("step-test", "step", "st"):
         return cmd_step_test(args)
-    elif args.command == "turn-test":
+    elif cmd in ("turn-test", "turn", "t"):
         return cmd_turn_test(args)
-    elif args.command == "monitor":
+    elif cmd == "pick":
+        return cmd_gripper_action("pick", args)
+    elif cmd == "drop":
+        return cmd_gripper_action("drop", args)
+    elif cmd in ("monitor", "mon", "live"):
         return cmd_monitor(args)
-    elif args.command == "analyze":
+    elif cmd in ("analyze", "ana", "a"):
         return cmd_analyze(args)
-    elif args.command == "calibrate":
+    elif cmd in ("calibrate", "cal"):
         return cmd_calibrate(args)
-    elif args.command == "map":
+    elif cmd in ("map", "m"):
         return cmd_map(args)
+
     return 0
 
 

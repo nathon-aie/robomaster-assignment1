@@ -1,5 +1,5 @@
-"""RoboMaster EP Autonomous Grid Navigation Package."""
-
+from .config_loader import load_settings
+from .gripper_controller import SimpleGripperController
 from .pid_controller import PIDController, PIDGains, WallCenteringPID
 from .robot_controller import MockRobotActuators, RobotControllerThread
 from .robot_system import RobotSystem
@@ -17,6 +17,7 @@ from .sensor_pipeline import (
 from .telemetry import TelemetryAnalyzer, TelemetryRecorder
 
 __all__ = [
+    "load_settings",
     "RobotSystem",
     "SensorHub",
     "SensorCollectorThread",
@@ -27,6 +28,7 @@ __all__ = [
     "PIDGains",
     "RobotControllerThread",
     "MockRobotActuators",
+    "SimpleGripperController",
     "TelemetryRecorder",
     "TelemetryAnalyzer",
     "MovingAverageFilter",

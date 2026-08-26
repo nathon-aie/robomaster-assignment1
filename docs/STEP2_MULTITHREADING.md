@@ -75,28 +75,26 @@
 ### 1. ทดสอบรัน Simulation ด้วยแผนที่ `data/robot_map_plan.json`
 ใช้ทดสอบความถูกต้องของ 2 Threads, แผนการเดิน, และการบันทึก Log โดยไม่ต้องเชื่อมต่อหุ่นจริง:
 ```bash
-.venv/bin/python main.py simulate --plan data/robot_map_plan.json
+./run sim
 ```
 
 ### 2. รันหุ่นยนต์จริงกับ RoboMaster EP
 เชื่อมต่อคอมพิวเตอร์เข้ากับ Wi-Fi AP ของ RoboMaster EP แล้วรัน:
 ```bash
-.venv/bin/python main.py run --conn-type ap --plan data/robot_map_plan.json
+./run run
 ```
 
 ### 3. มอนิเตอร์ค่า Sensor สดจาก Thread 1 (Live Monitor)
 แสดงข้อมูลระยะ Sharp L/R, ToF, Yaw, และการตรวจจับกำแพงแบบ Real-time:
 ```bash
-.venv/bin/python main.py monitor --conn-type ap
+./run mon
 ```
-*(หรือทดสอบดูค่าแบบ mock: `.venv/bin/python main.py monitor --mock`)*
 
 ### 4. วิเคราะห์และพลอตกราฟข้อมูลหลังการรัน (Post-run Analysis)
 ```bash
-.venv/bin/python main.py analyze telemetry_logs/run1
-```
+# วิเคราะห์รอบล่าสุดอัตโนมัติ
+./run ana
 
-### 5. รันทดสอบ Unit Tests ของ Step 2
-```bash
-.venv/bin/python -m unittest tests/test_multithreading.py
+# หรือระบุรอบที่ต้องการ
+./run ana 1
 ```

@@ -23,8 +23,10 @@ from dataclasses import dataclass
 from typing import Optional, Tuple
 
 try:
+    from .config_loader import load_settings
     from .sensor_pipeline import RobotSensorSnapshot
 except (ImportError, ValueError):
+    from config_loader import load_settings
     from sensor_pipeline import RobotSensorSnapshot
 
 
@@ -81,66 +83,66 @@ class PIDController:
         # D term
         d_term = 0.0
         if self.last_error is not None and dt > 0:
-            derivative = (error - self.last_error) / dt
-            d_term = self.gains.kd * derivative
+            d_term = self.gains.kd * (error - self.last_error) / dt
         self.last_error = error
 
-        output = p_term + i_term + d_term
+        raw_output = p_term + i_term + d_term
         # Clamp output
-        return max(self.gains.min_output, min(self.gains.max_output, output))
+        return max(self.gains.min_output, min(self.gains.max_output, raw_output))
 
 
 class WallCenteringPID:
-    """Implements Step 3 Wall Centering across the 8 REQ cases."""
-
-    # Default parameters based on 60x60cm Grid & 25cm Robot
-    # Corridor inner width ~ 525mm, Robot width 250mm -> ~137.5mm each side
-    DEFAULT_NOMINAL_SIDE_MM = 140.0
-    DEADBAND_TOLERANCE_MM = 20.0  # 2 cm tolerance as specified in REQ (|L-R| < 2cm, L/R +- 2cm)
-    WALL_DETECT_THRESHOLD_MM = 260.0  # Max distance to consider side wall present
-    FRONT_WALL_STOP_MM = 150.0  # Distance from front ToF to front wall at grid center
+    """Step 3 PID Controller implementing 8 Wall Decision Cases."""
 
     def __init__(
         self,
-        nominal_side_dist_mm: float = DEFAULT_NOMINAL_SIDE_MM,
-        tolerance_mm: float = DEADBAND_TOLERANCE_MM,
-        front_target_mm: float = FRONT_WALL_STOP_MM,
-        lateral_kp: float = 0.0018,  # Smooth lateral centering (50mm error -> ~0.09 m/s)
-        lateral_ki: float = 0.0001,
-        lateral_kd: float = 0.0012,  # Damping to prevent oscillating across corridor
-        max_lateral_speed: float = 0.10,  # Max vy m/s (gentle correction)
-        yaw_kp: float = 1.8,  # Active Heading Hold: 1 deg error -> 1.8 deg/s vz
-        yaw_ki: float = 0.05,  # Eliminates steady-state heading drift
-        yaw_kd: float = 0.15,  # Strong derivative damping against heading wobble
-        max_yaw_speed: float = 35.0,  # Max vz deg/s
+        nominal_side_dist_mm: Optional[float] = None,
+        tolerance_mm: Optional[float] = None,
+        front_target_mm: Optional[float] = None,
+        lateral_kp: Optional[float] = None,
+        lateral_ki: Optional[float] = None,
+        lateral_kd: Optional[float] = None,
+        max_lateral_speed: Optional[float] = None,
+        yaw_kp: Optional[float] = None,
+        yaw_ki: Optional[float] = None,
+        yaw_kd: Optional[float] = None,
+        max_yaw_speed: Optional[float] = None,
+        config_path: Optional[str] = None,
     ):
-        self.nominal_side_dist_mm = nominal_side_dist_mm
-        self.tolerance_mm = tolerance_mm
-        self.front_target_mm = front_target_mm
+        cfg = load_settings(config_path).get("controller", {})
+        lat_cfg = cfg.get("lateral_pid", {})
+        yaw_cfg = cfg.get("heading_pid", {})
+
+        self.nominal_side_dist_mm = nominal_side_dist_mm if nominal_side_dist_mm is not None else cfg.get("nominal_side_dist_mm", 140.0)
+        self.tolerance_mm = tolerance_mm if tolerance_mm is not None else lat_cfg.get("deadband", 3.0)
+        self.front_target_mm = front_target_mm if front_target_mm is not None else cfg.get("front_wall_stop_dist_mm", 150.0)
+        self.WALL_DETECT_THRESHOLD_MM = 280.0
 
         # Lateral (Y-axis) PID: error in mm -> vy in m/s
+        lat_max = max_lateral_speed if max_lateral_speed is not None else lat_cfg.get("max_output", 0.15)
         self.pid_lateral = PIDController(
             PIDGains(
-                kp=lateral_kp,
-                ki=lateral_ki,
-                kd=lateral_kd,
-                max_output=max_lateral_speed,
-                min_output=-max_lateral_speed,
+                kp=lateral_kp if lateral_kp is not None else lat_cfg.get("kp", 0.0018),
+                ki=lateral_ki if lateral_ki is not None else lat_cfg.get("ki", 0.0),
+                kd=lateral_kd if lateral_kd is not None else lat_cfg.get("kd", 0.0004),
+                max_output=lat_max,
+                min_output=-lat_max,
                 integral_limit=30.0,
-                deadband=tolerance_mm,  # |error| < 20mm (2cm) -> vy = 0
+                deadband=self.tolerance_mm,
             )
         )
 
-        # Yaw Heading PID: error in deg -> vz in deg/s (Locks heading rock-solid with 0 deadband)
+        # Yaw Heading PID: error in deg -> vz in deg/s
+        yaw_max = max_yaw_speed if max_yaw_speed is not None else yaw_cfg.get("max_output", 30.0)
         self.pid_yaw = PIDController(
             PIDGains(
-                kp=yaw_kp,
-                ki=yaw_ki,
-                kd=yaw_kd,
-                max_output=max_yaw_speed,
-                min_output=-max_yaw_speed,
+                kp=yaw_kp if yaw_kp is not None else yaw_cfg.get("kp", 0.80),
+                ki=yaw_ki if yaw_ki is not None else yaw_cfg.get("ki", 0.0),
+                kd=yaw_kd if yaw_kd is not None else yaw_cfg.get("kd", 0.10),
+                max_output=yaw_max,
+                min_output=-yaw_max,
                 integral_limit=20.0,
-                deadband=0.0,  # 0.0 deadband: instantly corrects even a fraction of a degree
+                deadband=0.0,
             )
         )
 

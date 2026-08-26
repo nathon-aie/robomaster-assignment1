@@ -62,10 +62,10 @@
 
 ## 📌 Implementation Reference (แผนผังเอกสารและซอร์สโค้ด)
 
-| ข้อกำหนด (Requirement) | เอกสารอ้างอิง | ซอร์สโค้ดหลัก | คำสั่งหลักผ่าน `main.py` |
+| ข้อกำหนด (Requirement) | เอกสารอ้างอิง | ซอร์สโค้ดหลัก | คำสั่งด่วน (`./run`) |
 | :--- | :--- | :--- | :--- |
-| **1. Calibrate (Sharp, ToF, Gripper)** | [docs/STEP1_CALIBRATION.md](docs/STEP1_CALIBRATION.md) | [src/calibrate.py](src/calibrate.py) | `.venv/bin/python main.py calibrate fit data/calibration_measurements.csv` |
-| **2. Multi-threading (2 Threads + Telemetry)** | [docs/STEP2_MULTITHREADING.md](docs/STEP2_MULTITHREADING.md) | [src/sensor_pipeline.py](src/sensor_pipeline.py), [src/telemetry.py](src/telemetry.py) | `.venv/bin/python main.py monitor --conn-type ap` |
-| **3. เดินทีละ Grid + PID Centering (8 Cases)** | [docs/STEP3_PID.md](docs/STEP3_PID.md) | [src/pid_controller.py](src/pid_controller.py), [src/robot_controller.py](src/robot_controller.py) | `.venv/bin/python main.py step-test --cells 1 --conn-type ap` |
-| **4. Gripper วางของ** | *(Next Step)* | [src/robot_controller.py](src/robot_controller.py) | `.venv/bin/python main.py run --conn-type ap` |
-| **5. แผนที่และคำสั่ง JSON** | [README.md](README.md) | [src/map_planner.py](src/map_planner.py) | `.venv/bin/python main.py map` |
+| **1. Calibrate (Sharp, ToF, Gripper)** | [docs/STEP1_CALIBRATION.md](docs/STEP1_CALIBRATION.md) | [src/calibrate.py](src/calibrate.py) | `./run cal fit` |
+| **2. Multi-threading (2 Threads + Telemetry)** | [docs/STEP2_MULTITHREADING.md](docs/STEP2_MULTITHREADING.md) | [src/sensor_pipeline.py](src/sensor_pipeline.py), [src/telemetry.py](src/telemetry.py) | `./run mon` / `./run ana` |
+| **3. เดินทีละ Grid + PID Centering (8 Cases)** | [docs/STEP3_PID.md](docs/STEP3_PID.md) | [src/pid_controller.py](src/pid_controller.py), [src/robot_controller.py](src/robot_controller.py) | `./run step 1` / `./run turn right` |
+| **4. Gripper วางของ (Pick & Drop)** | [docs/STEP4_GRIPPER.md](docs/STEP4_GRIPPER.md) | [src/gripper_controller.py](src/gripper_controller.py) | `./run pick` / `./run drop` |
+| **5. แผนที่และคำสั่ง JSON (A\* Search)** | [docs/STEP5_MAP_PLANNER.md](docs/STEP5_MAP_PLANNER.md) | [src/map_planner.py](src/map_planner.py) | `./run map` / `./run run` |

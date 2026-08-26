@@ -1,0 +1,10 @@
+#!/usr/bin/env bash
+# Quick CLI Launcher for RoboMaster EP Navigation System
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+PYTHON="$SCRIPT_DIR/.venv/bin/python"
+
+if [ ! -f "$PYTHON" ]; then
+    PYTHON="python3"
+fi
+
+exec "$PYTHON" "$SCRIPT_DIR/main.py" "$@"

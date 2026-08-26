@@ -14,14 +14,30 @@ from typing import Any, Optional
 
 try:
     from . import calibrate
+    from .config_loader import load_settings
     from .robot_controller import RobotControllerThread
     from .sensor_pipeline import CalibrationManager, SensorCollectorThread, SensorHub
     from .telemetry import TelemetryAnalyzer, TelemetryRecorder
 except (ImportError, ValueError):
     import calibrate
+    from config_loader import load_settings
     from robot_controller import RobotControllerThread
     from sensor_pipeline import CalibrationManager, SensorCollectorThread, SensorHub
     from telemetry import TelemetryAnalyzer, TelemetryRecorder
+
+
+def normalize_conn_type(conn_type: Optional[str]) -> str:
+    """Ensures conn_type string matches DJI SDK's internal singleton ('ap'/'sta'/'rndis').
+
+    DJI RoboMaster SDK uses identity comparisons (`if conn_type is CONNECTION_WIFI_AP:`)
+    instead of equality, which fails on non-interned strings loaded from YAML or CLI args.
+    """
+    c = str(conn_type or "ap").strip().lower()
+    if c == "sta":
+        return sys.intern("sta")
+    elif c == "rndis":
+        return sys.intern("rndis")
+    return sys.intern("ap")
 
 
 class RobotSystem:
@@ -29,25 +45,35 @@ class RobotSystem:
 
     def __init__(
         self,
-        calibration_file: str = "calibration_output/calibration.json",
-        telemetry_dir: str = "telemetry_logs",
-        sensor_rate_hz: float = 20.0,
-        mock_mode: bool = False,
-        conn_type: str = "ap",
+        calibration_file: Optional[str] = None,
+        telemetry_dir: Optional[str] = None,
+        sensor_rate_hz: Optional[float] = None,
+        mock_mode: Optional[bool] = None,
+        conn_type: Optional[str] = None,
+        config_path: Optional[str] = None,
     ):
-        self.mock_mode = mock_mode
-        self.conn_type = conn_type
+        cfg = load_settings(config_path)
+        r_cfg = cfg.get("robot", {})
+        s_cfg = cfg.get("sensor_pipeline", {})
+        sys_cfg = cfg.get("system", {})
+
+        self.mock_mode = mock_mode if mock_mode is not None else r_cfg.get("mock_mode", False)
+        raw_conn = conn_type if conn_type is not None else r_cfg.get("conn_type", "ap")
+        self.conn_type = normalize_conn_type(raw_conn)
         self.robot = None
 
         # Core subsystems
-        self.calibration_mgr = CalibrationManager(calibration_file)
-        self.telemetry = TelemetryRecorder(output_dir=telemetry_dir)
+        cal_path = calibration_file or s_cfg.get("calibration_file", "calibration_output/calibration.json")
+        tel_dir = telemetry_dir or sys_cfg.get("telemetry_logs_dir", "telemetry_logs")
+        self.sensor_rate_hz = sensor_rate_hz if sensor_rate_hz is not None else s_cfg.get("sensor_rate_hz", 20.0)
+
+        self.calibration_mgr = CalibrationManager(cal_path)
+        self.telemetry = TelemetryRecorder(output_dir=tel_dir)
         self.sensor_hub = SensorHub(max_history=1000)
 
         # Multi-threading workers
         self.thread_1_sensor: Optional[SensorCollectorThread] = None
         self.thread_2_controller: Optional[RobotControllerThread] = None
-        self.sensor_rate_hz = sensor_rate_hz
 
     def connect_robot(self) -> bool:
         """Initializes connection to RoboMaster EP hardware."""
@@ -55,15 +81,22 @@ class RobotSystem:
             print("[RobotSystem] Running in SIMULATION / MOCK mode (No physical hardware needed).")
             return True
 
-        print(f"[RobotSystem] Connecting to RoboMaster EP via {self.conn_type.upper()}...")
+        conn_str = normalize_conn_type(self.conn_type)
+        print(f"[RobotSystem] Connecting to RoboMaster EP via {conn_str.upper()}...")
         try:
             robot_mod = calibrate.load_robot_sdk()
             self.robot = robot_mod.Robot()
-            self.robot.initialize(conn_type=self.conn_type)
+            self.robot.initialize(conn_type=conn_str)
             print("[RobotSystem] Successfully connected to RoboMaster EP!")
             return True
         except Exception as exc:
             print(f"[RobotSystem] Connection failed: {exc}")
+            if "proxy_addr" in str(exc):
+                print("\n⚠️ [สาเหตุที่เป็นไปได้ / Checklist]:")
+                print("  1. คอมพิวเตอร์ยังไม่ได้เชื่อมต่อ Wi-Fi เข้ากับหุ่นยนต์ RoboMaster EP (SSID เช่น 'RM_...' หรือ 'EP_...')")
+                print("  2. สวิตช์โหมดการเชื่อมต่อหลังตัวหุ่นยนต์ยังไม่ได้สับไปที่ตำแหน่ง Direct (AP Mode)")
+                print("  3. หุ่นยนต์ปิดอยู่ หรือแบตเตอรี่หมด")
+                print("  💡 ลองตรวจสอบ Wi-Fi ในเครื่องและทดสอบ `ping 192.168.2.1` ดูครับ\n")
             print("[RobotSystem] Switching to MOCK mode fallback.")
             self.mock_mode = True
             self.robot = None

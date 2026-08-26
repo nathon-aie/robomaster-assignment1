@@ -2,13 +2,21 @@
 """RoboMaster EP arm and gripper sequences used by the main navigation flow."""
 
 import time
+from typing import Optional
+
+try:
+    from .config_loader import load_settings
+except (ImportError, ValueError):
+    from config_loader import load_settings
 
 
 class SimpleGripperController:
-    def __init__(self, ep_robot=None, dry_run=False):
+    def __init__(self, ep_robot=None, dry_run=False, config_path: Optional[str] = None):
         self.dry_run = dry_run
         self.arm = getattr(ep_robot, "robotic_arm", None) if ep_robot else None
         self.gripper = getattr(ep_robot, "gripper", None) if ep_robot else None
+        self.cfg = load_settings(config_path).get("gripper", {})
+        self.delay_sec = self.cfg.get("action_delay_sec", 0.5)
 
     def _move_arm(self, x=0, y=0, action_name=""):
         if action_name:
@@ -29,7 +37,7 @@ class SimpleGripperController:
             raise RuntimeError("Gripper unavailable")
         print("[gripper] opening...")
         self.gripper.open()
-        time.sleep(1.0)
+        time.sleep(self.delay_sec)
 
     def close(self):
         if not self.gripper:
@@ -39,7 +47,7 @@ class SimpleGripperController:
             raise RuntimeError("Gripper unavailable")
         print("[gripper] closing...")
         self.gripper.close()
-        time.sleep(1.0)
+        time.sleep(self.delay_sec)
 
     def recenter(self):
         print("[arm] recentering (closing gripper & retracting arm)...")
@@ -53,20 +61,22 @@ class SimpleGripperController:
         if hasattr(action, "wait_for_completed"):
             action.wait_for_completed()
 
-    def pick(self, extend_cm=7.0, lift_cm=10.0):
+    def pick(self, extend_cm: Optional[float] = None, lift_cm: Optional[float] = None):
         """Open, move to the object, close the gripper, and lift it."""
+        ext = extend_cm if extend_cm is not None else self.cfg.get("extend_cm", 7.0)
+        lft = lift_cm if lift_cm is not None else self.cfg.get("lift_cm", 10.0)
         print("[action] --- Start Pick ---")
         self.open()
-        time.sleep(0.5)
+        time.sleep(self.delay_sec)
         self._move_arm(x=150, y=0, action_name="lower arm 10 cm")
-        time.sleep(0.5)
+        time.sleep(1.0)
         self._move_arm(x=0, y=-200, action_name="lower arm 10 cm")
-        time.sleep(0.5)
+        time.sleep(1.0)
         self._move_arm(x=100, y=0, action_name="lower arm 10 cm")
-        time.sleep(0.5)
+        time.sleep(1.0)
         self.close()
         self._move_arm(x=0, y=200, action_name="lift arm")
-        time.sleep(0.5)
+        time.sleep(1.0)
         self._move_arm(x=-100, y=0, action_name="retract arm")
         print("[action] Pick Finished\n")
 

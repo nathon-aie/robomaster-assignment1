@@ -75,30 +75,32 @@
 ### 1. ทดสอบเดินเฉพาะ 1 ช่อง Grid (Step Test)
 ใช้สำหรับวางหุ่นในสนามจริงเพื่อดูการปรับกึ่งกลางของหุ่นยนต์:
 ```bash
-# ทดสอบเดิน 1 ช่องกับหุ่นจริง (AP mode)
-.venv/bin/python main.py step-test --cells 1 --conn-type ap
+# ทดสอบเดินหน้า 1 ช่อง (60 cm)
+./run step 1
 
-# หรือทดสอบเดิน 2 ช่อง
-.venv/bin/python main.py step-test --cells 2 --conn-type ap
+# ทดสอบเดินหน้า 2 ช่องต่อเนื่อง
+./run step 2
 ```
 
-### 2. รันตามแผนที่ [data/robot_map_plan.json](../data/robot_map_plan.json) พร้อมระบบ PID
+### 2. ทดสอบการเลี้ยว (Turn Test)
+```bash
+./run turn right     # เลี้ยวขวา 90°
+./run turn left      # เลี้ยวซ้าย 90°
+./run turn around    # กลับหลังหัน 180°
+```
+
+### 3. รันตามแผนที่ [data/robot_map_plan.json](../data/robot_map_plan.json) พร้อมระบบ PID
 ```bash
 # รันหุ่นยนต์จริง
-.venv/bin/python main.py run --conn-type ap --plan data/robot_map_plan.json
+./run run
 
 # หรือรันในโหมดจำลอง (Simulation)
-.venv/bin/python main.py simulate --plan data/robot_map_plan.json
+./run sim
 ```
 
-### 3. ปรับจูน Parameter เพิ่มเติม
+### 4. ปรับจูน Parameter เพิ่มเติม
 - `--speed`: ความเร็วเดินหน้าปกติ (default: `0.25` m/s)
 - `--nominal-side`: ระยะห่างเป้าหมายจากหุ่นถึงกำแพงเดี่ยว (default: `140.0` mm)
 ```bash
-.venv/bin/python main.py run --conn-type ap --speed 0.20 --nominal-side 140.0
-```
-
-### 4. รันชุดทดสอบความถูกต้องของ PID (11 Tests)
-```bash
-.venv/bin/python -m unittest tests/test_step3_pid.py
+./run run --speed 0.20 --nominal-side 140.0
 ```
