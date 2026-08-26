@@ -38,7 +38,47 @@ if str(_SRC_DIR) not in sys.path:
 
 
 from src.robot_system import RobotSystem
+from src.gripper_controller import SimpleGripperController
 from src.telemetry import TelemetryAnalyzer
+
+
+def confirm_action(prompt):
+    answer = input(f"{prompt} [y/N]: ").strip().lower()
+    if answer not in ("y", "yes"):
+        print("[main] Operation cancelled.")
+        return False
+    return True
+
+
+def run_pick_and_wait_for_navigation(sys_runner, args):
+    gripper_ctrl = SimpleGripperController(
+        ep_robot=sys_runner.robot,
+        dry_run=sys_runner.mock_mode,
+    )
+
+    if not confirm_action("Start pick now?"):
+        return None
+    gripper_ctrl.pick(extend_cm=args.extend_cm, lift_cm=args.lift_cm)
+
+    if not confirm_action("Pick finished. Start following the map now?"):
+        return None
+
+    sys_runner.setup_threads(plan_file=args.plan)
+    if args.backward_cm is not None and sys_runner.thread_2_controller:
+        sys_runner.thread_2_controller.set_commands([f"Move Backward: {args.backward_cm} cm"])
+    if sys_runner.thread_2_controller:
+        sys_runner.thread_2_controller.base_speed = args.speed
+        sys_runner.thread_2_controller.wall_pid.nominal_side_dist_mm = args.nominal_side
+
+    sys_runner.start()
+    reached_goal = sys_runner.wait_for_completion(
+        timeout=args.duration if args.duration > 0 else None
+    )
+    if reached_goal:
+        gripper_ctrl.drop(chassis=sys_runner.robot.chassis if sys_runner.robot else None)
+    else:
+        print("[main] Navigation did not reach the goal; drop skipped.")
+    return reached_goal
 
 def cmd_simulate(args):
     print("=" * 65)
@@ -50,12 +90,6 @@ def cmd_simulate(args):
         mock_mode=True,
     )
     sys_runner.connect_robot()
-    sys_runner.setup_threads(plan_file=args.plan)
-
-    if hasattr(args, "speed") and sys_runner.thread_2_controller:
-        sys_runner.thread_2_controller.base_speed = args.speed
-    if hasattr(args, "nominal_side") and sys_runner.thread_2_controller:
-        sys_runner.thread_2_controller.wall_pid.nominal_side_dist_mm = args.nominal_side
 
     def sig_handler(sig, frame):
         print("\nInterrupt received. Stopping...")
@@ -63,11 +97,10 @@ def cmd_simulate(args):
         sys.exit(0)
 
     signal.signal(signal.SIGINT, sig_handler)
-    sys_runner.start()
-
-    timeout = args.duration if args.duration > 0 else None
-    sys_runner.wait_for_completion(timeout=timeout)
-    sys_runner.shutdown()
+    try:
+        run_pick_and_wait_for_navigation(sys_runner, args)
+    finally:
+        sys_runner.shutdown()
 
 
 def cmd_run(args):
@@ -85,12 +118,6 @@ def cmd_run(args):
         print("[Error] Failed to connect to robot hardware. Exiting.")
         return 1
 
-    sys_runner.setup_threads(plan_file=args.plan)
-
-    if hasattr(args, "speed") and sys_runner.thread_2_controller:
-        sys_runner.thread_2_controller.base_speed = args.speed
-    if hasattr(args, "nominal_side") and sys_runner.thread_2_controller:
-        sys_runner.thread_2_controller.wall_pid.nominal_side_dist_mm = args.nominal_side
 
     def sig_handler(sig, frame):
         print("\nInterrupt received. Emergency stop initiated...")
@@ -98,10 +125,10 @@ def cmd_run(args):
         sys.exit(0)
 
     signal.signal(signal.SIGINT, sig_handler)
-    sys_runner.start()
-
-    sys_runner.wait_for_completion(timeout=args.duration if args.duration > 0 else None)
-    sys_runner.shutdown()
+    try:
+        run_pick_and_wait_for_navigation(sys_runner, args)
+    finally:
+        sys_runner.shutdown()
     return 0
 
 
@@ -207,6 +234,9 @@ def main():
     run_p.add_argument("--speed", type=float, default=0.25, help="Base cruising speed (m/s)")
     run_p.add_argument("--nominal-side", type=float, default=140.0, help="Nominal distance to single wall (mm)")
     run_p.add_argument("--duration", type=float, default=0.0, help="Max duration in seconds")
+    run_p.add_argument("--backward-cm", type=float, help="Run one backward move for this distance in cm")
+    run_p.add_argument("--extend-cm", type=float, default=7.0, help="Arm extension during pick")
+    run_p.add_argument("--lift-cm", type=float, default=10.0, help="Arm lift during pick")
     run_p.add_argument("--allow-mock-fallback", action="store_true", help="Fallback to mock if robot unavailable")
 
     # 2. Simulate
@@ -217,6 +247,9 @@ def main():
     sim_p.add_argument("--speed", type=float, default=0.25, help="Base cruising speed (m/s)")
     sim_p.add_argument("--nominal-side", type=float, default=140.0, help="Nominal distance to single wall (mm)")
     sim_p.add_argument("--duration", type=float, default=0.0, help="Max duration in seconds")
+    sim_p.add_argument("--backward-cm", type=float, help="Run one backward move for this distance in cm")
+    sim_p.add_argument("--extend-cm", type=float, default=7.0, help="Arm extension during pick")
+    sim_p.add_argument("--lift-cm", type=float, default=10.0, help="Arm lift during pick")
 
     # 3. Step-test
     step_p = subparsers.add_parser("step-test", help="Test N grid cell move with PID centering")
