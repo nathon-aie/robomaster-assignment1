@@ -339,11 +339,13 @@ class MissionControlApp(object):
                    enabled=lambda: not self.controller.mission_active())
         # The Place point itself is set with the "Place" tool in the TOOLS row.
         row.group("GRIPPER")
-        row.button("CARRY", self.act_carry, "ok", enabled=self._can_carry,
-                   dynamic_label=self._carry_label,
-                   tooltip="Empty gripper: fetch from the Goal. Loaded: deliver to Place")
-        row.button("PLACE TARGET", self.act_place_target, "normal",
-                   enabled=lambda: self.editable() and self.controller.map.place_cell is not None)
+        row.button("OBJECT PLACE", self.act_pickup, "ok", enabled=self._can_pickup,
+                   tooltip="Go to the object's square, sweep the ToF for it and grab it")
+        row.button("DELIVERY", self.act_delivery, "ok", enabled=self._can_deliver,
+                   tooltip="Carry what is held to the delivery point and release it")
+        row.button("TARGET", self.act_place_target, "normal",
+                   enabled=lambda: self.editable() and self.controller.map.place_cell is not None,
+                   tooltip="Pick the exact sub-square to release the object on")
         row.button("BACK TO START", self.act_back_to_start, "warn",
                    enabled=self._can_return)
         row.group("TURN ROBOT NOW")
@@ -371,11 +373,69 @@ class MissionControlApp(object):
     def _robot_facing_label(self):
         return "FACING: {}".format(DIR_LONG[self.controller.map.robot_dir % 4].upper())
 
-    def _carry_label(self):
-        robot = self.controller.robot
-        if robot is not None and robot.carrying:
-            return "DELIVER"
-        return "FETCH"
+    def _gripper_ready(self):
+        controller = self.controller
+        if not self.connected() or controller.mission_active():
+            return False
+        if controller.robot.emergency_stopped() or not controller.robot.has_gripper():
+            return False
+        return controller.armed or not controller.robot.is_physical
+
+    def _can_pickup(self):
+        controller = self.controller
+        return (self._gripper_ready() and not controller.robot.carrying
+                and controller.map.goal is not None)
+
+    def _can_deliver(self):
+        controller = self.controller
+        return (self._gripper_ready() and controller.robot.carrying
+                and controller.map.place_cell is not None)
+
+    def act_pickup(self):
+        """Go to the object's square, sweep for it and grab it."""
+        controller = self.controller
+        robot = controller.robot
+        if robot is not None and robot.is_physical:
+            self._confirm(
+                "OBJECT PLACE",
+                ["The robot will drive to {},".format(controller.map.goal),
+                 "turn in place sweeping the ToF for the object,",
+                 "and close the gripper on it."],
+                self._do_pickup, label="GO AND GRAB",
+            )
+        else:
+            self._do_pickup()
+
+    def _do_pickup(self):
+        if self.controller.start_pickup_mission():
+            self.notify("Object place: looking for the object")
+        else:
+            self.notify(self.controller.last_error or "Cannot start OBJECT PLACE")
+
+    def act_delivery(self):
+        """Carry the held object to the aimed sub-square and release it."""
+        controller = self.controller
+        grid = controller.map
+        robot = controller.robot
+        off_x, off_y = getattr(grid, "place_offset", (0.0, 0.0))
+        cell_m = grid.cell_size_m or controller.config.cell_size_m
+        if robot is not None and robot.is_physical:
+            self._confirm(
+                "DELIVERY",
+                ["Carry the object to {} facing {},".format(
+                    grid.place_cell, DIR_LONG[grid.place_dir % 4].upper()),
+                 "releasing it {:+.0f} cm E {:+.0f} cm S inside that square.".format(
+                     off_x * cell_m * 100, off_y * cell_m * 100)],
+                self._do_delivery, label="DELIVER",
+            )
+        else:
+            self._do_delivery()
+
+    def _do_delivery(self):
+        if self.controller.start_delivery_mission():
+            self.notify("Delivering to {}".format(self.controller.map.place_cell))
+        else:
+            self.notify(self.controller.last_error or "Cannot start DELIVERY")
 
     def _can_return(self):
         controller = self.controller
@@ -419,38 +479,6 @@ class MissionControlApp(object):
         cell_m = grid.cell_size_m or self.controller.config.cell_size_m
         self.notify("Drop aim {:+.0f} cm E {:+.0f} cm S in cell {}".format(
             off_x * cell_m * 100, off_y * cell_m * 100, grid.place_cell))
-
-    def _can_carry(self):
-        controller = self.controller
-        if not self.connected() or controller.mission_active():
-            return False
-        if controller.robot.emergency_stopped() or not controller.robot.has_gripper():
-            return False
-        if controller.map.place_cell is None or controller.map.goal is None:
-            return False
-        return controller.armed or not controller.robot.is_physical
-
-    def act_carry(self):
-        """Pick the bottle up at the Goal and put it down on the Place point."""
-        controller = self.controller
-        grid = controller.map
-        robot = controller.robot
-        if robot is not None and robot.is_physical:
-            self._confirm(
-                "START CARRY MISSION",
-                ["The robot will drive to {} and close the gripper,".format(grid.goal),
-                 "then carry the bottle to {} and release it".format(grid.place_cell),
-                 "facing {}.".format(DIR_LONG[grid.place_dir % 4].upper())],
-                self._do_carry, label="RUN CARRY",
-            )
-        else:
-            self._do_carry()
-
-    def _do_carry(self):
-        if self.controller.start_carry_mission():
-            self.notify("Carry mission started")
-        else:
-            self.notify(self.controller.last_error or "Carry mission could not start")
 
     def _can_jog(self):
         controller = self.controller

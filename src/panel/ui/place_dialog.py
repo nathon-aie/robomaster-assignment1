@@ -22,15 +22,16 @@ class PlaceTargetDialog(object):
     """Zoomed sub-cell picker for the drop position."""
 
     #: Sub-squares per side.  Odd, so there is a true centre square.
-    DIVISIONS = 5
+    #: 9 across a 60 cm cell is ~6.7 cm per square - finer than the object.
+    DIVISIONS = 9
 
     def __init__(self, grid, on_change=None, cell_size_m=0.60):
         self.grid = grid
         self.on_change = on_change
         self.cell_size_m = cell_size_m
         self.done = False
-        self.rect = pygame.Rect(0, 0, 460, 560)
-        self.board = pygame.Rect(0, 0, 320, 320)
+        self.rect = pygame.Rect(0, 0, 500, 600)
+        self.board = pygame.Rect(0, 0, 360, 360)
         self.close_btn = Button((0, 0, 130, 34), "DONE", self._close, "accent",
                                 font_key="body")
         self.centre_btn = Button((0, 0, 130, 34), "CENTRE", self._recentre, "ghost",
@@ -110,12 +111,13 @@ class PlaceTargetDialog(object):
         pygame.draw.rect(surface, theme.PLACE_ARROW, self.rect, 2, border_radius=8)
 
         cell = self.grid.place_cell
-        draw_text(surface, fonts.h1, "PLACE TARGET", (self.rect.x + 20, self.rect.y + 16))
+        draw_text(surface, fonts.h1, "DELIVERY TARGET", (self.rect.x + 20, self.rect.y + 16))
         draw_text(surface, fonts.small,
                   "cell {}   facing {}".format(cell, DIR_LONG[self.grid.place_dir % 4]),
                   (self.rect.x + 20, self.rect.y + 44), theme.TEXT_DIM)
         draw_text(surface, fonts.tiny,
-                  "Click where inside the square the object should be released",
+                  "Click the sub-square to release the object on ({0}x{0} grid)".format(
+                      self.DIVISIONS),
                   (self.rect.x + 20, self.rect.y + 66), theme.TEXT_FAINT)
 
         pygame.draw.rect(surface, theme.CELL_FREE, self.board)

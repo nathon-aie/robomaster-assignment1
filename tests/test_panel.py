@@ -1203,23 +1203,24 @@ class TestCarryMission(unittest.TestCase):
         finally:
             controller.shutdown()
 
-    def test_carry_mission_delivers_and_faces_the_marked_direction(self):
+    def test_delivery_faces_the_marked_direction_around_a_detour(self):
         grid = self._field()
         for row in range(0, 4):
             grid.set_wall(3, row, 1, True)     # force a detour
         controller = self._controller(grid)
         try:
             self.assertTrue(controller.connect()[0])
-            self.assertTrue(controller.start_carry_mission())
-            deadline = time.time() + 300
-            while controller.mission_active() and time.time() < deadline:
-                controller.tick()
-                time.sleep(0.05)
+            self.assertTrue(controller.start_pickup_mission())
+            self._run_mission(controller)
+            self.assertTrue(controller.robot.carrying)
+
+            self.assertTrue(controller.start_delivery_mission())
+            self._run_mission(controller)
             state = controller.tracker.get()
             self.assertEqual(controller.navigation_status, "COMPLETE")
             self.assertEqual(state.cell, grid.place_cell)
             self.assertEqual(heading_to_dir(state.map_heading), grid.place_dir)
-            self.assertFalse(controller.robot.carrying, "the bottle must be released")
+            self.assertFalse(controller.robot.carrying, "the object must be released")
         finally:
             controller.shutdown()
 
@@ -1286,13 +1287,23 @@ class TestCarryMission(unittest.TestCase):
             controller.tick()
             time.sleep(0.05)
 
-    def test_carry_fetches_and_delivers_in_one_press(self):
-        """Goal and Place both set: one press does the whole round trip."""
+    def test_object_place_then_delivery(self):
+        """OBJECT PLACE grabs it; DELIVERY takes it to the aimed square."""
         controller = self._controller(self._field())
         grid = controller.map
         try:
             self.assertTrue(controller.connect()[0])
-            self.assertTrue(controller.start_carry_mission())
+
+            self.assertTrue(controller.start_pickup_mission())
+            self._run_mission(controller)
+            self.assertEqual(controller.navigation_status, "HOLDING")
+            self.assertTrue(controller.robot.carrying)
+            # It pulls up beside the object rather than onto it.
+            cell = controller.tracker.get().cell
+            self.assertEqual(
+                abs(cell[0] - grid.goal[0]) + abs(cell[1] - grid.goal[1]), 1)
+
+            self.assertTrue(controller.start_delivery_mission())
             self._run_mission(controller)
             self.assertEqual(controller.navigation_status, "COMPLETE")
             self.assertFalse(controller.robot.carrying)
@@ -1300,14 +1311,59 @@ class TestCarryMission(unittest.TestCase):
         finally:
             controller.shutdown()
 
-    def test_carry_fetches_only_when_there_is_nowhere_to_put_it(self):
-        """No Place point: fetch and hold, rather than refusing to start."""
+    def test_delivery_refuses_with_an_empty_gripper(self):
+        controller = self._controller(self._field())
+        try:
+            self.assertTrue(controller.connect()[0])
+            self.assertFalse(controller.robot.carrying)
+            self.assertFalse(controller.start_delivery_mission())
+        finally:
+            controller.shutdown()
+
+    def test_object_place_refuses_when_already_loaded(self):
+        controller = self._controller(self._field())
+        try:
+            self.assertTrue(controller.connect()[0])
+            controller.robot.carrying = True
+            self.assertFalse(controller.start_pickup_mission())
+        finally:
+            controller.shutdown()
+
+    def test_pickup_sweeps_by_turning_until_the_object_is_ahead(self):
+        """The ToF is bolted to the chassis, so finding means turning."""
+        grid = self._field()
+        controller = self._controller(grid)
+        try:
+            self.assertTrue(controller.connect()[0])
+            self.assertIsNotNone(controller._approach(grid.goal, "object"))
+            facing = heading_to_dir(controller.tracker.get().map_heading)
+            # Deliberately face away from the object before sweeping.
+            self.assertTrue(controller._face_direction((facing + 2) % 4))
+            detection = controller._scan_for_object()
+            self.assertIsNotNone(detection)
+            self.assertTrue(detection.present)
+        finally:
+            controller.shutdown()
+
+    def test_scan_gives_up_after_a_full_circle(self):
+        grid = self._field()
+        grid.objects = set()
+        controller = self._controller(grid)
+        try:
+            self.assertTrue(controller.connect()[0])
+            controller.ground_truth.objects = set()
+            self.assertIsNone(controller._scan_for_object())
+        finally:
+            controller.shutdown()
+
+    def test_object_place_works_without_a_delivery_point(self):
+        """Picking up does not depend on knowing where it will go."""
         grid = self._field()
         grid.place_cell = None
         controller = self._controller(grid)
         try:
             self.assertTrue(controller.connect()[0])
-            self.assertTrue(controller.start_carry_mission())
+            self.assertTrue(controller.start_pickup_mission())
             self._run_mission(controller)
             self.assertTrue(controller.robot.carrying)
             self.assertEqual(controller.navigation_status, "HOLDING")
@@ -1318,7 +1374,7 @@ class TestCarryMission(unittest.TestCase):
         finally:
             controller.shutdown()
 
-    def test_carry_goes_straight_to_place_when_already_loaded(self):
+    def test_delivery_goes_straight_to_the_place_point(self):
         """A loaded gripper must deliver, not drive back to the goal first."""
         grid = self._field()
         grid.objects = set()          # nothing at the goal to fetch
@@ -1329,7 +1385,7 @@ class TestCarryMission(unittest.TestCase):
             controller.robot.carrying = True      # already holding something
             controller.sync_gripper_state()
 
-            self.assertTrue(controller.start_carry_mission())
+            self.assertTrue(controller.start_delivery_mission())
             self._run_mission(controller)
             self.assertEqual(controller.navigation_status, "COMPLETE")
             self.assertFalse(controller.robot.carrying)
@@ -1344,13 +1400,13 @@ class TestCarryMission(unittest.TestCase):
         try:
             self.assertTrue(controller.connect()[0])
             controller.ground_truth.objects = set()
-            self.assertTrue(controller.start_carry_mission())
+            self.assertTrue(controller.start_pickup_mission())
             deadline = time.time() + 300
             while controller.mission_active() and time.time() < deadline:
                 controller.tick()
                 time.sleep(0.05)
             self.assertFalse(controller.robot.carrying)
-            self.assertEqual(controller.navigation_status, "NOTHING TO PICK")
+            self.assertEqual(controller.navigation_status, "NOTHING FOUND")
         finally:
             controller.shutdown()
 
@@ -1383,6 +1439,20 @@ class TestCarryMission(unittest.TestCase):
         finally:
             controller.shutdown()
 
+    def test_delivery_target_grid_is_nine_by_nine(self):
+        from src.panel.ui.place_dialog import PlaceTargetDialog
+
+        self.assertEqual(PlaceTargetDialog.DIVISIONS, 9)
+        grid = self._field()
+        dialog = PlaceTargetDialog(grid)
+        # The middle sub-square is the cell centre.
+        centre = dialog._offset_for(4, 4)
+        self.assertAlmostEqual(centre[0], 0.0)
+        self.assertAlmostEqual(centre[1], 0.0)
+        # Round-tripping a chosen square selects the same square again.
+        grid.place_offset = dialog._offset_for(7, 2)
+        self.assertEqual(dialog._selected_indices(), (7, 2))
+
     def test_place_offset_roundtrips_and_rotates(self):
         grid = self._field()
         grid.place_offset = (0.3, -0.2)
@@ -1401,24 +1471,24 @@ class TestCarryMission(unittest.TestCase):
         self.assertAlmostEqual(grid.place_offset[0], 0.0)
         self.assertAlmostEqual(grid.place_offset[1], 0.4)
 
-    def test_carry_needs_a_place_point(self):
+    def test_delivery_needs_a_place_point(self):
         grid = self._field()
         grid.place_cell = None
-        grid.goal = None                 # nothing to fetch either
         controller = self._controller(grid)
         try:
             self.assertTrue(controller.connect()[0])
-            self.assertFalse(controller.start_carry_mission())
+            controller.robot.carrying = True
+            self.assertFalse(controller.start_delivery_mission())
         finally:
             controller.shutdown()
 
-    def test_carry_needs_a_goal_to_pick_from(self):
+    def test_object_place_needs_a_square_to_look_in(self):
         grid = self._field()
         grid.goal = None
         controller = self._controller(grid)
         try:
             self.assertTrue(controller.connect()[0])
-            self.assertFalse(controller.start_carry_mission())
+            self.assertFalse(controller.start_pickup_mission())
         finally:
             controller.shutdown()
 
@@ -1427,7 +1497,7 @@ class TestCarryMission(unittest.TestCase):
         controller = self._controller(grid, sim_speed=1.0)
         try:
             self.assertTrue(controller.connect()[0])
-            self.assertTrue(controller.start_carry_mission())
+            self.assertTrue(controller.start_pickup_mission())
             time.sleep(0.4)
             controller.emergency_stop()
             deadline = time.time() + 30

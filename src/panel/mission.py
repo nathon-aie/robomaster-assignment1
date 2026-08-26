@@ -59,8 +59,11 @@ MISSION_IDLE = "IDLE"
 MISSION_NAVIGATE = "NAVIGATE"
 MISSION_AUTOMAP = "AUTO MAP"
 MISSION_JOG = "MANUAL TURN"
-MISSION_CARRY = "CARRY"
+MISSION_PICKUP = "OBJECT PLACE"
+MISSION_DELIVERY = "DELIVERY"
 MISSION_RETURN = "BACK TO START"
+#: Kept so older callers/tests naming the combined mission still resolve.
+MISSION_CARRY = MISSION_PICKUP
 
 
 @dataclass
@@ -95,6 +98,9 @@ class MissionConfig:
     #: gripper (cm).  Matches the value tuned on the robot; the object ends up
     #: roughly this far behind the Place point.  0 releases on the spot.
     place_backoff_cm: float = 50.0
+    #: Quarter turns the robot may make while sweeping the ToF for the object.
+    #: 4 covers a full circle from wherever it stopped.
+    object_scan_turns: int = 4
     automap_max_steps: int = 4000
     #: Keep exploring until every reachable cell has actually been driven
     #: through, not just until the unknowns are resolved.
@@ -603,85 +609,144 @@ class MissionController(object):
         self.last_detection = detection
         return detection
 
-    def start_carry_mission(self):
-        """One button, two jobs, chosen by what the gripper is holding.
+    def start_pickup_mission(self):
+        """OBJECT PLACE: go to the object's square, find it, grab it.
 
-        Hands empty -> drive to the Goal, look for an object and grab it.
-        Holding something -> drive to the Place point and put it down facing
-        the marked direction.  That way pressing CARRY always does the thing
-        that makes sense next, and an interrupted run can simply be resumed.
+        The robot pulls up beside the square (an object occupies its cell, so
+        it cannot be driven onto), then *rotates in place* sweeping the front
+        ToF until the object is the thing in front of it, and closes the
+        gripper.
         """
         grid = self.map
         if self.robot is not None and not self.robot.has_gripper():
             self.log("This robot backend has no gripper", "warn")
             return False
-
-        carrying = bool(self.robot and self.robot.carrying)
-        if carrying:
-            if grid.place_cell is None:
-                self.log("Holding an object but no Place point is set", "warn")
-                return False
-        else:
-            if grid.goal is None:
-                self.log("Set a Goal - that is where the object is picked up", "warn")
-                return False
+        if self.robot is not None and self.robot.carrying:
+            self.log("Already holding something - use DELIVERY", "warn")
+            return False
+        if grid.goal is None:
+            self.log("Set the object's square with the Goal tool first", "warn")
+            return False
         if not self._preflight(need_path=False):
             return False
         self._stop_flag.clear()
         self._pause_flag.set()
-        self.mission_kind = MISSION_CARRY
+        self.mission_kind = MISSION_PICKUP
         self.deviation_warning = False
         self.replan_count = 0
-        self._worker = threading.Thread(target=self._run_carry, name="MissionCarry")
+        self._worker = threading.Thread(target=self._run_pickup, name="MissionPickup")
         self._worker.daemon = True
         self._worker.start()
         return True
 
-    def _run_carry(self):
-        """Fetch or deliver, depending on whether the gripper is already loaded."""
+    def start_delivery_mission(self):
+        """DELIVERY: carry what is held to the aimed sub-position and release it."""
+        grid = self.map
+        if self.robot is not None and not self.robot.has_gripper():
+            self.log("This robot backend has no gripper", "warn")
+            return False
+        if self.robot is not None and not self.robot.carrying:
+            self.log("Nothing in the gripper - run OBJECT PLACE first", "warn")
+            return False
+        if grid.place_cell is None:
+            self.log("Set a delivery point with the Place tool first", "warn")
+            return False
+        if not self._preflight(need_path=False):
+            return False
+        self._stop_flag.clear()
+        self._pause_flag.set()
+        self.mission_kind = MISSION_DELIVERY
+        self.deviation_warning = False
+        self.replan_count = 0
+        self._worker = threading.Thread(target=self._run_delivery, name="MissionDelivery")
+        self._worker.daemon = True
+        self._worker.start()
+        return True
+
+    def start_carry_mission(self):
+        """Whichever of the two makes sense for what the gripper holds."""
+        if self.robot is not None and self.robot.carrying:
+            return self.start_delivery_mission()
+        return self.start_pickup_mission()
+
+    def _run_pickup(self):
+        """Drive to the object's square, sweep for it, grab it."""
         grid = self.map
         try:
-            if not self.robot.carrying:
-                # ---- fetch leg: go to the goal and grab whatever is there ----
-                self.navigation_status = "TO PICKUP"
-                self.tracker.set_status(RobotStatus.NAVIGATING)
-                self.log("Carry mission: heading to the object at {}".format(grid.goal))
-                if self._approach(grid.goal, "object") is None:
-                    return
-
-                self.navigation_status = "LOOKING"
-                detection = self._look_for_object()
-                if not detection.present:
-                    self.navigation_status = "NOTHING TO PICK"
-                    self.log("No object found at the goal: {}".format(detection.reason),
-                             "warn")
-                    return
-
-                self.navigation_status = "PICKING"
-                self.log("Object {:.2f} m ahead - closing the gripper".format(
-                    detection.distance_m))
-                result = self.robot.pick()
-                if not result.ok:
-                    self.navigation_status = "PICK FAILED"
-                    self.log("Pick failed: {}".format(result.reason), "error")
-                    return
-                self.sync_gripper_state()
-                self.log("Object picked up")
-
-                if grid.place_cell is None:
-                    self.navigation_status = "HOLDING"
-                    self.tracker.set_status(RobotStatus.READY)
-                    self.log("Holding the object. Set a Place point and press "
-                             "CARRY again to deliver it")
-                    return
-
-            # ---- deliver leg ----
-            self.navigation_status = "TO PLACE"
-            self.log("Carrying to the place point at {}".format(grid.place_cell))
-            if not self._drive_to(grid.place_cell, "place point"):
+            self.navigation_status = "TO OBJECT"
+            self.tracker.set_status(RobotStatus.NAVIGATING)
+            self.log("OBJECT PLACE: heading to the square at {}".format(grid.goal))
+            if self._approach(grid.goal, "object") is None:
                 return
 
-            # Face the direction marked on the map before letting go.
+            self.navigation_status = "SCANNING"
+            detection = self._scan_for_object()
+            if detection is None or not detection.present:
+                self.navigation_status = "NOTHING FOUND"
+                self.log("Swept a full circle and found nothing to pick up", "warn")
+                return
+
+            self.navigation_status = "PICKING"
+            self.log("Object {:.2f} m ahead - closing the gripper".format(
+                detection.distance_m))
+            result = self.robot.pick()
+            if not result.ok:
+                self.navigation_status = "PICK FAILED"
+                self.log("Pick failed: {}".format(result.reason), "error")
+                return
+
+            self.sync_gripper_state()
+            self.navigation_status = "HOLDING"
+            self.tracker.set_status(RobotStatus.READY)
+            self.log("Object picked up. Press DELIVERY to take it to the "
+                     "delivery point")
+        except Exception as exc:  # pragma: no cover - defensive
+            self.navigation_status = "ERROR"
+            self.tracker.set_status(RobotStatus.ERROR)
+            self.log("Pickup error: {}".format(exc), "error")
+        finally:
+            if self.robot:
+                self.robot.stop()
+            self.mission_kind = MISSION_IDLE
+            self.tracker.set_target(None)
+
+    def _scan_for_object(self):
+        """Rotates in place, sweeping the front ToF, until the object is ahead.
+
+        The ToF is bolted to the chassis, so "aim the sensor" means "turn the
+        robot".  Each quarter turn puts the beam down a different axis, and the
+        detector can only be trusted on an axis because that is where the map
+        knows what the beam ought to hit.
+        """
+        for attempt in range(max(1, self.config.object_scan_turns)):
+            if self._should_abort() or not self._wait_if_paused():
+                return None
+            detection = self._look_for_object()
+            if detection.present:
+                if attempt:
+                    self.log("Found it after {} quarter turn(s)".format(attempt))
+                return detection
+            if attempt + 1 >= self.config.object_scan_turns:
+                break
+            self.log("Nothing ahead ({}), turning to look".format(detection.reason))
+            _, cur_dir = self._robot_cell_dir(fresh=True)
+            result = self.robot.turn(90.0)
+            if not result.ok:
+                self.log("Scan turn failed: {}".format(result.reason), "warn")
+                return None
+            self._settle_heading((cur_dir + 1) % 4)
+        return None
+
+    def _run_delivery(self):
+        """Carry what is held to the delivery point and release it on the aim spot."""
+        grid = self.map
+        try:
+            self.navigation_status = "TO DELIVERY"
+            self.tracker.set_status(RobotStatus.NAVIGATING)
+            self.log("DELIVERY: carrying to {}".format(grid.place_cell))
+            if not self._drive_to(grid.place_cell, "delivery point"):
+                return
+
             self.navigation_status = "PLACING"
             if not self._face_direction(grid.place_dir):
                 return
@@ -694,17 +759,22 @@ class MissionController(object):
             self.sync_gripper_state()
             self.navigation_status = "COMPLETE"
             self.tracker.set_status(RobotStatus.READY)
-            backoff = self.config.place_backoff_cm if self.robot.is_physical else 0.0
+            off_x, off_y = getattr(grid, "place_offset", (0.0, 0.0))
+            cell_m = grid.cell_size_m or self.config.cell_size_m
             where = "at {}".format(grid.place_cell)
+            if off_x or off_y:
+                where += " aimed {:+.0f} cm E {:+.0f} cm S in the square".format(
+                    off_x * cell_m * 100, off_y * cell_m * 100)
+            backoff = self.config.place_backoff_cm if self.robot.is_physical else 0.0
             if backoff:
                 where += (" (released ~{:.0f} cm behind it - the drop"
                           " sequence reverses first)".format(backoff))
-            self.log("Carry mission complete: object placed {} facing {}".format(
+            self.log("Delivery complete: object placed {} facing {}".format(
                 where, DIR_LONG[grid.place_dir % 4]))
         except Exception as exc:  # pragma: no cover - defensive
             self.navigation_status = "ERROR"
             self.tracker.set_status(RobotStatus.ERROR)
-            self.log("Carry mission error: {}".format(exc), "error")
+            self.log("Delivery error: {}".format(exc), "error")
         finally:
             if self.robot:
                 self.robot.stop()
