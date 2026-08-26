@@ -32,7 +32,7 @@ from .geometry import (
     wrap180,
 )
 from .mapper import OccupancyMapper
-from .objects import ObjectDetector
+from .objects import ObjectDetection, ObjectDetector
 from .occupancy import FREE, UNKNOWN, OccupancyGrid
 from .pathfinding import (
     PathResult,
@@ -107,6 +107,11 @@ class MissionConfig:
     robot_clearance_m: float = 0.16
     #: Largest fine-positioning slide allowed when lining up the drop.
     max_nudge_m: float = 0.40
+    #: An object standing on the floor can sit below the ToF beam, so the
+    #: sensor may never confirm what the operator can plainly see.  With this
+    #: on, a marked square is grabbed from anyway once the robot is squared up
+    #: on it - the log says clearly that the sensor did not confirm it.
+    trust_object_marker: bool = True
     #: Quarter turns the robot may make while sweeping the ToF for the object.
     #: 4 covers a full circle from wherever it stopped.
     object_scan_turns: int = 4
@@ -616,7 +621,8 @@ class MissionController(object):
         """Looks for a graspable object ahead using the front ToF."""
         reading = self.latest_reading()
         carrying = bool(self.robot and self.robot.carrying)
-        detection = self.detector.detect(reading, carrying=carrying)
+        detection = self.detector.detect(reading, carrying=carrying,
+                                         expect_cell=self.object_square())
         self.last_detection = detection
         return detection
 
@@ -737,15 +743,26 @@ class MissionController(object):
             self.mission_kind = MISSION_IDLE
             self.tracker.set_target(None)
 
+    def _facing_marked_square(self):
+        """True when the beam is pointing at the square marked as holding it."""
+        target = self.object_square()
+        if target is None:
+            return False
+        cell, direction = self._robot_cell_dir()
+        d_col, d_row = DIR_VECTORS[direction]
+        return (cell[0] + d_col, cell[1] + d_row) == target
+
     def _scan_for_object(self):
-        """Rotates in place, sweeping the front ToF, until the object is ahead.
+        """Sweeps the front ToF for the object by turning the robot.
 
         The ToF is bolted to the chassis, so "aim the sensor" means "turn the
-        robot".  Each quarter turn puts the beam down a different axis, and the
-        detector can only be trusted on an axis because that is where the map
-        knows what the beam ought to hit.
+        robot".  The approach already left it pointing at the marked square, so
+        that direction is checked first and the sweep is only for when the
+        marker is off by a square - spinning a full circle before looking where
+        the operator pointed is just wasted turning.
         """
-        for attempt in range(max(1, self.config.object_scan_turns)):
+        turns = max(1, self.config.object_scan_turns)
+        for attempt in range(turns):
             if self._should_abort() or not self._wait_if_paused():
                 return None
             detection = self._look_for_object()
@@ -753,7 +770,7 @@ class MissionController(object):
                 if attempt:
                     self.log("Found it after {} quarter turn(s)".format(attempt))
                 return detection
-            if attempt + 1 >= self.config.object_scan_turns:
+            if attempt + 1 >= turns:
                 break
             self.log("Nothing ahead ({}), turning to look".format(detection.reason))
             _, cur_dir = self._robot_cell_dir(fresh=True)
@@ -762,7 +779,36 @@ class MissionController(object):
                 self.log("Scan turn failed: {}".format(result.reason), "warn")
                 return None
             self._settle_heading((cur_dir + 1) % 4)
-        return None
+
+        # Nothing confirmed.  An object sitting on the floor can pass under the
+        # ToF beam entirely, and auto-mapping may already have written it down
+        # as a wall - in both cases the sensor will never agree, but the
+        # operator marked that square on purpose.  Go back to facing it and say
+        # plainly that this is being taken on trust.
+        target = self.object_square()
+        if not (self.config.trust_object_marker and target is not None):
+            return None
+        if not self._face_marked_square(target):
+            return None
+        self.log("ToF did not confirm anything in {} - it may be sitting below"
+                 " the beam. Trusting the Object marker and grabbing.".format(target),
+                 "warn")
+        return ObjectDetection(present=True, distance_m=0.0, cell=target,
+                               reason="taken on trust from the Object marker")
+
+    def _face_marked_square(self, target):
+        """Turns to point at the marked square from wherever the robot stands."""
+        if self._facing_marked_square():
+            return True
+        cell, _ = self._robot_cell_dir(fresh=True)
+        d_col = target[0] - cell[0]
+        d_row = target[1] - cell[1]
+        try:
+            direction = dir_from_delta(d_col, d_row)
+        except ValueError:
+            self.log("Robot is not beside the marked square - cannot face it", "warn")
+            return False
+        return self._face_direction(direction)
 
     def _run_delivery(self):
         """Carry what is held to the delivery point and release it on the aim spot."""

@@ -94,11 +94,19 @@ class ObjectDetector(object):
         return bool(carrying)
 
     # ---------------------------------------------------------------- detection
-    def detect(self, reading, carrying=False):
+    def detect(self, reading, carrying=False, expect_cell=None):
         """Looks for a graspable object straight ahead.
 
-        Returns an ``ObjectDetection``.  Always negative while carrying - the
-        object in the gripper is not a new thing to pick up.
+        ``expect_cell`` is the square the operator has explicitly marked as
+        holding an object.  When the beam is pointing at that square the map
+        comparison is skipped: a person has said something is standing there,
+        and the map is the less reliable witness.  That matters because a low
+        object on the floor is exactly what auto-mapping would have written
+        down as a wall, after which "that is just the wall" would reject the
+        very thing we came for.
+
+        Always negative while carrying - the object in the gripper is not a
+        new thing to pick up.
         """
         if carrying:
             self.reset()
@@ -120,15 +128,16 @@ class ObjectDetector(object):
             return ObjectDetection(distance_m=distance, reason="outside the map")
 
         direction = heading_to_dir(map_pose.heading_deg)
+        d_col, d_row = DIR_VECTORS[direction]
+        object_cell = (cell[0] + d_col, cell[1] + d_row)
+        marked = expect_cell is not None and object_cell == expect_cell
+
         expected = self.expected_clear_m(cell, direction)
-        if distance > expected - self.clearance_margin_m:
+        if not marked and distance > expected - self.clearance_margin_m:
             # As far away as the map says the wall is: that is the wall.
             self.reset()
             return ObjectDetection(distance_m=distance,
                                    reason="matches the mapped wall distance")
-
-        d_col, d_row = DIR_VECTORS[direction]
-        object_cell = (cell[0] + d_col, cell[1] + d_row)
         if object_cell != self._last_cell:
             self._streak = 0
             self._last_cell = object_cell
@@ -139,5 +148,6 @@ class ObjectDetector(object):
             distance_m=distance,
             cell=object_cell,
             confidence=self._streak,
-            reason="{:.2f} m ahead, map predicts {:.2f} m".format(distance, expected),
+            reason=("{:.2f} m ahead in the marked square".format(distance) if marked
+                    else "{:.2f} m ahead, map predicts {:.2f} m".format(distance, expected)),
         )

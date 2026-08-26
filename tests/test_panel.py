@@ -1395,7 +1395,12 @@ class TestCarryMission(unittest.TestCase):
         finally:
             controller.shutdown()
 
-    def test_carry_reports_when_there_is_nothing_to_pick_up(self):
+    def test_empty_marked_square_fails_at_the_gripper(self):
+        """A marked square that is actually empty: it goes, tries, and says so.
+
+        The marker is trusted over the sensor, so the honest failure is the
+        gripper closing on nothing - not the detector claiming it looked.
+        """
         grid = self._field()
         grid.objects = set()
         controller = self._controller(grid)
@@ -1403,10 +1408,24 @@ class TestCarryMission(unittest.TestCase):
             self.assertTrue(controller.connect()[0])
             controller.ground_truth.objects = set()
             self.assertTrue(controller.start_pickup_mission())
-            deadline = time.time() + 300
-            while controller.mission_active() and time.time() < deadline:
-                controller.tick()
-                time.sleep(0.05)
+            self._run_mission(controller)
+            self.assertFalse(controller.robot.carrying)
+            self.assertEqual(controller.navigation_status, "PICK FAILED")
+        finally:
+            controller.shutdown()
+
+    def test_no_marker_and_nothing_there_reports_nothing_found(self):
+        """With no Object marker there is nothing to take on trust."""
+        grid = self._field()
+        grid.objects = set()
+        grid.object_cell = None          # only the Goal square as a fallback
+        controller = self._controller(grid)
+        try:
+            self.assertTrue(controller.connect()[0])
+            controller.ground_truth.objects = set()
+            controller.config.trust_object_marker = False
+            self.assertTrue(controller.start_pickup_mission())
+            self._run_mission(controller)
             self.assertFalse(controller.robot.carrying)
             self.assertEqual(controller.navigation_status, "NOTHING FOUND")
         finally:
@@ -1692,6 +1711,80 @@ class TestCarryMission(unittest.TestCase):
             state = controller.tracker.get()
             nudge, _ = controller._delivery_nudge(state.map_col + 3.0, state.map_row)
             self.assertLessEqual(math.hypot(*nudge), 0.05 + 1e-6)
+        finally:
+            controller.shutdown()
+
+    def test_marked_square_beats_a_wall_the_map_recorded(self):
+        """Auto-mapping writes a floor object down as a wall; the marker wins.
+
+        Without this the robot reaches the square, reads the object at 0.53 m,
+        decides "that is just the wall the map knows about" and spins.
+        """
+        from src.panel.objects import ObjectDetector
+        from src.panel.sensors import SensorReading
+
+        grid = open_grid(6, 6)
+        grid.set_wall(4, 2, 1, True)          # the object, logged as a wall
+        transform = CoordinateTransform(origin_col=4, origin_row=2,
+                                        cell_size_m=0.6, start_dir=1)
+        detector = ObjectDetector(grid, transform, confirm_frames=1)
+        reading = SensorReading(front_mm=530.0, front_valid=True,
+                                pose=RobotPose(0.0, 0.0, 0.0))
+
+        self.assertFalse(detector.detect(reading).present,
+                         "with no marker this reads as the mapped wall")
+        detector.reset()
+        self.assertTrue(detector.detect(reading, expect_cell=(5, 2)).present,
+                        "the operator marked that square - trust it")
+
+    def test_low_object_is_still_picked_up(self):
+        """An object on the floor can pass under the beam entirely.
+
+        The sensor will never agree, but a person marked that square on
+        purpose, so the robot squares up on it and grabs rather than spinning.
+        """
+        grid = self._field()
+        controller = self._controller(grid)
+        try:
+            self.assertTrue(controller.connect()[0])
+            controller.detector.detect_max_m = 0.01   # nothing can ever be seen
+            self.assertTrue(controller.start_pickup_mission())
+            self._run_mission(controller)
+            self.assertEqual(controller.navigation_status, "HOLDING")
+            self.assertTrue(controller.robot.carrying)
+            self.assertTrue(
+                any("Trusting the Object marker" in text
+                    for _, _, text in controller.events),
+                "taking it on trust has to be said out loud")
+        finally:
+            controller.shutdown()
+
+    def test_trusting_the_marker_can_be_switched_off(self):
+        grid = self._field()
+        controller = self._controller(grid, trust_object_marker=False)
+        try:
+            self.assertTrue(controller.connect()[0])
+            controller.detector.detect_max_m = 0.01
+            self.assertTrue(controller.start_pickup_mission())
+            self._run_mission(controller)
+            self.assertEqual(controller.navigation_status, "NOTHING FOUND")
+            self.assertFalse(controller.robot.carrying)
+        finally:
+            controller.shutdown()
+
+    def test_scan_looks_at_the_marked_square_before_spinning(self):
+        """The approach already aimed it there; spinning first is wasted turning."""
+        grid = self._field()
+        controller = self._controller(grid)
+        try:
+            self.assertTrue(controller.connect()[0])
+            self.assertIsNotNone(controller._approach(grid.object_cell, "object"))
+            self.assertTrue(controller._facing_marked_square())
+            before = heading_to_dir(controller.tracker.get().map_heading)
+            detection = controller._scan_for_object()
+            self.assertTrue(detection.present)
+            after = heading_to_dir(controller.tracker.get().map_heading)
+            self.assertEqual(before, after, "it should not have turned at all")
         finally:
             controller.shutdown()
 
