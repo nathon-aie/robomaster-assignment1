@@ -6,3 +6,4 @@ telemetry_logs/*.png
 telemetry_logs/*.json
 re.md
 telemetry_logs/*/
+analyze/*.png
