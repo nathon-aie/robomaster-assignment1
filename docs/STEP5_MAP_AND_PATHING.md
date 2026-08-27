@@ -1,6 +1,6 @@
 # Step 5 — Environment Mapping, A* Path Planning & Trajectory Analysis
 
-คู่มือและเอกสารอธิบายระบบ **การสร้างแผนที่สภาพแวดล้อม (Map Planning GUI)**, การหาเส้นทางอัตโนมัติด้วย **A* Algorithm**, การส่งออกคำสั่งเป็น **JSON Format** และการวิเคราะห์เส้นทางการเดินจริงผ่าน **Jupyter Notebook (`analyze\pathing.ipynb`)** ตามข้อกำหนดใน [REQ.md](../REQ.md)
+คู่มือและเอกสารอธิบายระบบ **การสร้างแผนที่สภาพแวดล้อม (Map Planning GUI)**, การหาเส้นทางอัตโนมัติด้วย **A* Algorithm**, การส่งออกคำสั่งเป็น **JSON Format** และการวิเคราะห์เส้นทางการเดินจริงผ่าน **Jupyter Notebook (`analyze/pathing.ipynb`)** ตามข้อกำหนดใน [REQ.md](../REQ.md)
 
 ---
 
@@ -14,17 +14,17 @@
    - ค้นหาเส้นทางที่ดีที่สุดได้ 2 โหมด: **เส้นทางสั้นที่สุด (Shortest Path)** หรือ **เลี้ยวน้อยที่สุด (Minimum Turns)**
    - คำนวณมุมหันหน้าของหุ่นยนต์ (Heading) และกำแพงสัมพัทธ์รอบตัวหุ่นยนต์ (Front, Back, Left, Right) ในแต่ละสเต็ป
 3. **ส่งออกแผนและชุดคำสั่ง (Export to JSON)**:
-   - บันทึกข้อมูลทั้งหมดลงไฟล์ [data\robot_map_plan.json](../data\robot_map_plan.json) เพื่อให้หุ่นยนต์โหลดไปใช้งาน
+   - บันทึกข้อมูลทั้งหมดลงไฟล์ [data/robot_map_plan.json](../data/robot_map_plan.json) เพื่อให้หุ่นยนต์โหลดไปใช้งาน
    - ออกแบบให้หุ่นยนต์เริ่มต้นหันหน้าไปตามแนวทางเดินเสมอ (ทิศ North/ขึ้น) ไม่จำเป็นต้องหมุนหุ่นตอนเริ่ม
 4. **พล็อตเปรียบเทียบเส้นทางจริงทับแผนที่ (Trajectory Overlay in Jupyter)**:
    - ดึงข้อมูลแผนที่และ Log จาก [telemetry_logs/](../telemetry_logs/) มาแปลงพิกัดเข้าสู่ Grid Map
-   - แสดงผลในสมุดบันทึก [analyze\pathing.ipynb](../analyze\pathing.ipynb) พร้อมวิเคราะห์ความแม่นยำและค่าความคลาดเคลื่อน
+   - แสดงผลในสมุดบันทึก [analyze/pathing.ipynb](../analyze/pathing.ipynb) พร้อมวิเคราะห์ความแม่นยำและค่าความคลาดเคลื่อน
 
 ---
 
 ## 🏗 โครงสร้างสถาปัตยกรรมและไฟล์ที่เกี่ยวข้อง
 
-```
+```text
 +-------------------------------------------------------------------------------+
 |                       1. Map Planner GUI (Pygame)                             |
 |                           [src/map_planner.py]                                |
@@ -38,7 +38,7 @@
                                         v
 +-------------------------------------------------------------------------------+
 |                       2. แผนการเดินหุ่นยนต์ JSON                              |
-|                       [data\robot_map_plan.json]                              |
+|                       [data/robot_map_plan.json]                              |
 |   - grid_info: rows=6, cols=5, grid_size=100px                                |
 |   - start: [0, 5], goal: [3, 1]                                               |
 |   - walls: รายการตำแหน่งกำแพงของทุก Cell                                      |
@@ -53,7 +53,7 @@
 +---------------------------------+           +---------------------------------+
 |      3. Robot Execution         |           |   4. Pathing & Trajectory       |
 |   [src/robot_controller.py]     |           |          Analysis               |
-|                                 |           |     [analyze\pathing.ipynb]     |
+|                                 |           |     [analyze/pathing.ipynb]     |
 | - สั่งหุ่นยนต์เดินตามคำสั่ง JSON  |           |                                 |
 | - PID Centering ตามกำแพง 8 แบบ  |           | - แปลง Odometry -> Grid Map      |
 | - บันทึก Telemetry Log ลงไฟล์    |           | - พล็อต Planned vs Actual Path  |
@@ -80,17 +80,17 @@ python main.py map
 | **กดปุ่ม `G` ค้างไว้ + คลิกช่อง** | ย้าย/วางตำแหน่งจุดเป้าหมาย **Goal (สีแดง)** |
 | **`Spacebar`** | คำนวณเส้นทางที่สั้นที่สุด (**Shortest Path**) ด้วย A* |
 | **`T`** | คำนวณเส้นทางที่เลี้ยวน้อยที่สุด (**Min Turns**) ด้วย A* |
-| **`K`** | **บันทึกแผนที่ (Save)** และคำสั่งลง [data\robot_map_plan.json](../data\robot_map_plan.json) |
+| **`K`** | **บันทึกแผนที่ (Save)** และคำสั่งลง [data/robot_map_plan.json](../data/robot_map_plan.json) |
 | **`L`** | **โหลดแผนที่ (Load)** ล่าสุดจากไฟล์ JSON |
 | **`C`** | ล้างแผนที่และเส้นทางทั้งหมด (**Clear Map**) |
 
 ---
 
-## 📈 การวิเคราะห์เส้นทางใน Jupyter Notebook (`analyze\pathing.ipynb`)
+## 📈 การวิเคราะห์เส้นทางใน Jupyter Notebook (`analyze/pathing.ipynb`)
 
 เปิดสมุดบันทึกการวิเคราะห์:
 ```cmd
-jupyter notebook analyze\pathing.ipynb
+jupyter notebook analyze/pathing.ipynb
 ```
 
 ### ฟังก์ชันหลักใน Notebook:
@@ -112,5 +112,5 @@ jupyter notebook analyze\pathing.ipynb
 
 - [src/map_planner.py](../src/map_planner.py): โปรแกรม GUI แผนที่และอัลกอริทึม A*
 - [map.py](../map.py): Shim Entry Point สำหรับรัน Map Planner จาก root
-- [data\robot_map_plan.json](../data\robot_map_plan.json): ไฟล์แผนที่และลำดับคำสั่งที่ Export ออกมา
-- [analyze\pathing.ipynb](../analyze\pathing.ipynb): สมุดบันทึก Jupyter วิเคราะห์และพล็อตเส้นทางเดิน\n
+- [data/robot_map_plan.json](../data/robot_map_plan.json): ไฟล์แผนที่และลำดับคำสั่งที่ Export ออกมา
+- [analyze/pathing.ipynb](../analyze/pathing.ipynb): สมุดบันทึก Jupyter วิเคราะห์และพล็อตเส้นทางเดิน

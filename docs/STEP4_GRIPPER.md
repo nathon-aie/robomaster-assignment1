@@ -20,7 +20,7 @@
 
 ## 🏗 โครงสร้างสถาปัตยกรรมและโมดูลควบคุม
 
-```
+```text
 +-------------------------------------------------------------------------------+
 |                       src/gripper_controller.py                               |
 |                     (SimpleGripperController)                                 |
@@ -70,26 +70,26 @@
 ### 1. รันการทำงานแบบครบวงจร (Pick $\rightarrow$ เดินตามแผนที่ $\rightarrow$ Drop)
 ```cmd
 # รันหุ่นยนต์จริงผ่าน Wi-Fi AP (มีถามยืนยันก่อน Pick และ Drop เพื่อความปลอดภัย)
-python main.py run --plan data\robot_map_plan.json
+python main.py run --conn-type ap --plan data/robot_map_plan.json
 
 # รันแบบอัตโนมัติต่อเนื่องโดยไม่ต้องกดยืนยัน (-y)
-python main.py run --plan data\robot_map_plan.json -y
+python main.py run --conn-type ap --plan data/robot_map_plan.json -y
 ```
 
 ### 2. ทดสอบในโหมดจำลอง (Simulation / Dry-Run)
 ทดสอบตรรกะการเรียกใช้ Pick และ Drop โดยไม่ต้องต่อฮาร์ดแวร์จริง:
 ```cmd
 # จำลองการทำงานเต็มรูปแบบ
-python main.py simulate --plan data\robot_map_plan.json -y
+python main.py simulate --plan data/robot_map_plan.json -y
 ```
 
 ### 3. รันแบบข้ามขั้นตอน Pick หรือ Drop (เฉพาะทดสอบการเดิน)
 ```cmd
 # ข้ามเฉพาะขั้นตอนหนีบของที่จุดเริ่มต้น
-python main.py run --plan data\robot_map_plan.json --skip-pick
+python main.py run --conn-type ap --plan data/robot_map_plan.json --skip-pick
 
 # ข้ามทั้ง Pick และ Drop เพื่อทดสอบเฉพาะการเดินตามแผนที่
-python main.py run --plan data\robot_map_plan.json --skip-pick --skip-drop -y
+python main.py run --conn-type ap --plan data/robot_map_plan.json --skip-pick --skip-drop -y
 ```
 
 ---
@@ -98,4 +98,4 @@ python main.py run --plan data\robot_map_plan.json --skip-pick --skip-drop -y
 
 - [src/gripper_controller.py](../src/gripper_controller.py): ลำดับคำสั่งขยับแขนกลและกริปเปอร์ `SimpleGripperController`
 - [src/robot_controller.py](../src/robot_controller.py): ลอจิกการเชื่อมโยงคำสั่ง Pick/Drop เข้ากับ State Machine ของหุ่นยนต์
-- [main.py](../main.py): CLI Flag สำหรับควบคุมกริปเปอร์ (`--skip-pick`, `--skip-drop`, `-y`)\n
+- [main.py](../main.py): CLI Flags สำหรับควบคุมกริปเปอร์ (`--skip-pick`, `--skip-drop`, `-y`, `--extend-cm`, `--lift-cm`)

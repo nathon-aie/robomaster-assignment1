@@ -21,7 +21,7 @@ pip install -r requirements.txt
 
 ### 2. สร้างไฟล์บันทึกค่า (CSV Template)
 ```cmd
-python main.py calibrate init-csv data\calibration_measurements.csv
+python main.py calibrate init-csv data/calibration_measurements.csv
 ```
 
 ### 3. เก็บค่า Sharp และ ToF จากหุ่นจริง
@@ -43,7 +43,7 @@ python main.py calibrate collect-live tof --tof-index 0
 > - ควรวัดอย่างน้อย 5–8 ระยะต่อเซนเซอร์ และวัดซ้ำระยะละ 3–5 ครั้ง (ช่วงระยะ Sharp ประมาณ 40–300 mm ตาม Datasheet GP2Y0A41SK0F)
 
 ### 4. เพิ่มค่า Gripper
-SDK ของ RoboMaster EP รายงานสถานะ Gripper เป็น `opened` / `closed` / `normal` ไม่ใช่ระยะเปิดจริง ดังนั้นให้วัดระยะจริงด้วยมือ แล้วกรอกค่าใน [data\calibration_measurements.csv](../data\calibration_measurements.csv):
+SDK ของ RoboMaster EP รายงานสถานะ Gripper เป็น `opened` / `closed` / `normal` ไม่ใช่ระยะเปิดจริง ดังนั้นให้วัดระยะจริงด้วยมือ แล้วกรอกค่าใน [data/calibration_measurements.csv](../data/calibration_measurements.csv):
 
 ```csv
 sensor,raw_value,reference_mm,sample_id
@@ -55,7 +55,7 @@ gripper,101,100,1
 
 ### 5. คำนวณสมการและสร้างกราฟ Polynomial Fit
 ```cmd
-python main.py calibrate fit data\calibration_measurements.csv
+python main.py calibrate fit data/calibration_measurements.csv --output-dir calibration_output
 ```
 
 ผลลัพธ์จะถูกบันทึกไว้ที่:

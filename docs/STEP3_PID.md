@@ -6,7 +6,7 @@
 
 ## 🎯 วัตถุประสงค์ (Step 3 Requirements)
 
-1. **เดินทีละ Grid**: แบ่งการเคลื่อนที่ระยะไกลออกเป็นทีละช่อง ($60 \times 60$ cm, ความหนากำแพง 7.5 cm)
+1. **เดินทีละ Grid**: แบ่งการเคลื่อนที่ระยะไกลออกเป็นทีละช่อง ($60 \times 60\text{ cm}$, ความหนากำแพง $7.5\text{ cm}$)
 2. **PID Centering Control (แกน Y)**: ดึงข้อมูล Snapshot จาก **Thread 1** มาคำนวณและปรับความเร็วเบี่ยงข้าง ($v_y$) เพื่อรักษาให้ตัวหุ่นยนต์อยู่ตรงกลางระหว่างกำแพงตลอดเวลา
 3. **Heading Stabilization Lock (แกน Z)**: รักษาองศาของหุ่นยนต์ (Yaw $0^\circ, 90^\circ, 180^\circ, 270^\circ$) ด้วย IMU Heading PID ($v_z$)
 4. **ครอบคลุม 8 รูปแบบสภาพแวดล้อมกำแพง**:
@@ -17,22 +17,22 @@
 
 | Case | สภาพกำแพง | เงื่อนไขเซนเซอร์ | การคำนวณ Error แกน Y ($e_y$) | เกณฑ์ Deadband / เป้าหมาย |
 | :---: | :--- | :--- | :--- | :--- |
-| **1.1** | **มีกำแพงหน้า + 2 ข้าง** | ToF $< 350$mm, Sharp L & R $< 260$mm | $e_y = \text{Sharp}_L - \text{Sharp}_R$ | $\|\text{Sharp}_L - \text{Sharp}_R\| < 20$ mm ($2$ cm) |
-| **1.2** | **มีกำแพงหน้า + ซ้ายอย่างเดียว** | ToF $< 350$mm, Sharp L $< 260$mm | $e_y = \text{Sharp}_L - \text{Nominal}$ | $\text{Sharp}_L \pm 20$ mm จากระยะกึ่งกลางปกติ |
-| **1.3** | **มีกำแพงหน้า + ขวาอย่างเดียว** | ToF $< 350$mm, Sharp R $< 260$mm | $e_y = \text{Nominal} - \text{Sharp}_R$ | $\text{Sharp}_R \pm 20$ mm จากระยะกึ่งกลางปกติ |
-| **1.4** | **มีกำแพงหน้า + ไม่มีกำแพงข้าง** | ToF $< 350$mm, No Side Walls | $e_y = 0$ | เดินตรง + เบรกเมื่อ ToF ถึงระยะกึ่งกลางช่อง |
-| **2.1** | **ไม่มีกำแพงหน้า + 2 ข้าง** | ToF $\ge 350$mm, Sharp L & R $< 260$mm | $e_y = \text{Sharp}_L - \text{Sharp}_R$ | $\|\text{Sharp}_L - \text{Sharp}_R\| < 20$ mm ($2$ cm) |
-| **2.2** | **ไม่มีกำแพงหน้า + ซ้ายอย่างเดียว** | ToF $\ge 350$mm, Sharp L $< 260$mm | $e_y = \text{Sharp}_L - \text{Nominal}$ | $\text{Sharp}_L \pm 20$ mm จากระยะกึ่งกลางปกติ |
-| **2.3** | **ไม่มีกำแพงหน้า + ขวาอย่างเดียว** | ToF $\ge 350$mm, Sharp R $< 260$mm | $e_y = \text{Nominal} - \text{Sharp}_R$ | $\text{Sharp}_R \pm 20$ mm จากระยะกึ่งกลางปกติ |
-| **2.4** | **ไม่มีกำแพงหน้า + ไม่มีกำแพงข้าง** | ToF $\ge 350$mm, No Side Walls | $e_y = 0$ | เดินตรง 60 cm ด้วย Odometry + ล็อกมุม Yaw |
+| **1.1** | **มีกำแพงหน้า + 2 ข้าง** | ToF $< 350\text{ mm}$, Sharp L & R $< 260\text{ mm}$ | $e_y = \text{Sharp}_L - \text{Sharp}_R$ | $\|\text{Sharp}_L - \text{Sharp}_R\| < 20\text{ mm}$ ($2\text{ cm}$) |
+| **1.2** | **มีกำแพงหน้า + ซ้ายอย่างเดียว** | ToF $< 350\text{ mm}$, Sharp L $< 260\text{ mm}$ | $e_y = \text{Sharp}_L - \text{Nominal}$ | $\text{Sharp}_L \pm 20\text{ mm}$ จากระยะกึ่งกลางปกติ |
+| **1.3** | **มีกำแพงหน้า + ขวาอย่างเดียว** | ToF $< 350\text{ mm}$, Sharp R $< 260\text{ mm}$ | $e_y = \text{Nominal} - \text{Sharp}_R$ | $\text{Sharp}_R \pm 20\text{ mm}$ จากระยะกึ่งกลางปกติ |
+| **1.4** | **มีกำแพงหน้า + ไม่มีกำแพงข้าง** | ToF $< 350\text{ mm}$, No Side Walls | $e_y = 0$ | เดินตรง + เบรกเมื่อ ToF ถึงระยะกึ่งกลางช่อง |
+| **2.1** | **ไม่มีกำแพงหน้า + 2 ข้าง** | ToF $\ge 350\text{ mm}$, Sharp L & R $< 260\text{ mm}$ | $e_y = \text{Sharp}_L - \text{Sharp}_R$ | $\|\text{Sharp}_L - \text{Sharp}_R\| < 20\text{ mm}$ ($2\text{ cm}$) |
+| **2.2** | **ไม่มีกำแพงหน้า + ซ้ายอย่างเดียว** | ToF $\ge 350\text{ mm}$, Sharp L $< 260\text{ mm}$ | $e_y = \text{Sharp}_L - \text{Nominal}$ | $\text{Sharp}_L \pm 20\text{ mm}$ จากระยะกึ่งกลางปกติ |
+| **2.3** | **ไม่มีกำแพงหน้า + ขวาอย่างเดียว** | ToF $\ge 350\text{ mm}$, Sharp R $< 260\text{ mm}$ | $e_y = \text{Nominal} - \text{Sharp}_R$ | $\text{Sharp}_R \pm 20\text{ mm}$ จากระยะกึ่งกลางปกติ |
+| **2.4** | **ไม่มีกำแพงหน้า + ไม่มีกำแพงข้าง** | ToF $\ge 350\text{ mm}$, No Side Walls | $e_y = 0$ | เดินตรง $60\text{ cm}$ ด้วย Odometry + ล็อกมุม Yaw |
 
-> **หมายเหตุค่าระยะปกติ (Nominal)**: สำหรับช่องขนาด 60 cm กำแพงหนา 7.5 cm (ความกว้างช่องว่างด้านใน $\approx 525$ mm) และหุ่นกว้าง 250 mm จะมีระยะห่างจากขอบหุ่นถึงกำแพงแต่ละฝั่ง $\approx 137.5 - 140.0$ mm (กำหนดเป็นค่าเริ่มต้น `nominal_side_dist_mm = 140.0`)
+> **หมายเหตุค่าระยะปกติ (Nominal)**: สำหรับช่องขนาด $60\text{ cm}$ กำแพงหนา $7.5\text{ cm}$ (ความกว้างช่องว่างด้านใน $\approx 525\text{ mm}$) และหุ่นกว้าง $250\text{ mm}$ จะมีระยะห่างจากขอบหุ่นถึงกำแพงแต่ละฝั่ง $\approx 137.5 - 140.0\text{ mm}$ (กำหนดเป็นค่าเริ่มต้น `nominal_side_dist_mm = 140.0`)
 
 ---
 
 ## 🛠 การทำงานของ Controller Loop ในแต่ละ Grid
 
-```
+```text
              +------------------------------------+
              | เริ่มต้น Grid Step (เป้าหมาย 60cm) |
              +-----------------+------------------+
@@ -50,7 +50,7 @@
          |                     v
          |      +------------------------------+
          |      | คำนวณ PID:                   |
-         |      |  - vy: ปรับระยะเบี่ยงข้าง    | (Deadband 20mm)
+         |      |  - vy: ปรับระยะเบี่ยงข้าง    | (Deadband 12.5-20mm)
          |      |  - vz: ล็อกมุมหัวหุ่น (Yaw)  |
          |      |  - vx: ความเร็วเดินหน้า      |
          |      +--------------+---------------+
@@ -76,39 +76,39 @@
 ใช้สำหรับวางหุ่นในสนามจริงเพื่อดูการปรับกึ่งกลางของหุ่นยนต์:
 ```cmd
 # ทดสอบเดิน 1 ช่องกับหุ่นจริง (AP mode)
-python main.py step-test --cells 1
+python main.py step-test --cells 1 --conn-type ap
 
 # หรือทดสอบเดิน 2 ช่อง
-python main.py step-test --cells 2
+python main.py step-test --cells 2 --conn-type ap
 ```
 
 ### 2. ทดสอบการหมุนตัวในสนามจริง (Turn Test)
 ทดสอบการเลี้ยว 90° หรือกลับหลัง 180° พร้อม IMU Heading Correction:
 ```cmd
 # เลี้ยวขวา 90 องศา
-python main.py turn-test --direction right
+python main.py turn-test --direction right --conn-type ap
 
 # เลี้ยวซ้าย 90 องศา
-python main.py turn-test --direction left
+python main.py turn-test --direction left --conn-type ap
 
 # กลับหลังหัน 180 องศา
-python main.py turn-test --direction around
+python main.py turn-test --direction around --conn-type ap
 ```
 
-### 3. รันตามแผนที่ [data\robot_map_plan.json](../data\robot_map_plan.json) พร้อมระบบ PID
+### 3. รันตามแผนที่ [data/robot_map_plan.json](../data/robot_map_plan.json) พร้อมระบบ PID
 ```cmd
 # รันหุ่นยนต์จริง
-python main.py run --plan data\robot_map_plan.json
+python main.py run --conn-type ap --plan data/robot_map_plan.json
 
 # หรือรันในโหมดจำลอง (Simulation)
-python main.py simulate --plan data\robot_map_plan.json
+python main.py simulate --plan data/robot_map_plan.json -y
 ```
 
 ### 4. พารามิเตอร์ PID และการปรับจูน (PID Parameters)
 - `kp_y` (default `0.0018`): Gain ปรับความเร็วเบี่ยงข้าง ($v_y$) ตามผลต่างเซนเซอร์ Sharp
 - `kp_yaw` (default `0.015`): Gain ปรับความเร็วเชิงมุม ($v_z$) เพื่อล็อกองศา Yaw ให้ตรงตามแกนตาราง
-- `--speed`: ความเร็วเดินหน้าปกติ (default: `0.25` m/s)
+- `--speed`: ความเร็วเดินหน้าปกติ (default: `0.25` m/s ใน `run`/`simulate`, `0.20` m/s ใน `step-test`)
 - `--nominal-side`: ระยะห่างเป้าหมายจากหุ่นถึงกำแพงเดี่ยว (default: `140.0` mm)
 ```cmd
-python main.py run --speed 0.20 --nominal-side 140.0
+python main.py run --speed 0.20 --nominal-side 140.0 --conn-type ap
 ```
