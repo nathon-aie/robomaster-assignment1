@@ -5,7 +5,7 @@
 
 ---
 
-## 👤 ข้อมูลผู้จัดทำ (รายงานเฉพาะส่วนงานที่ 3 — ทำคนเดียว)
+## 👤 ข้อมูลผู้จัดทำ
 - **ผู้รับผิดชอบและจัดทำรายงาน**: **นายพลกฤต บัวลอย** — รหัสนักศึกษา 6810110223
 - **กลุ่มโปรเจกต์รวม**: ภัยพิบัติทั้ง 4 (PhaiPiBud_Thang_Si)
 - **สาขาวิชาวิศวกรรมปัญญาประดิษฐ์ (AI Engineering)**  
@@ -13,26 +13,11 @@
 
 ---
 
-## 📑 สารบัญ (Table of Contents)
-1. [ภาพรวมการแบ่งส่วนงานของทั้งโปรเจกต์และการจัดสรรงานกลุ่ม (Work Breakdown & Team Allocation)](#1-ภาพรวมการแบ่งส่วนงานของทั้งโปรเจกต์และการจัดสรรงานกลุ่ม-work-breakdown--team-allocation)
-2. [บทนำและวัตถุประสงค์ของส่วนที่ 3 (Introduction & Objectives)](#2-บทนำและวัตถุประสงค์ของส่วนที่-3-introduction--objectives)
-3. [ข้อกำหนดทางกายภาพและสภาพแวดล้อม (Physical & Environmental Specifications)](#3-ข้อกำหนดทางกายภาพและสภาพแวดล้อม-physical--environmental-specifications)
-4. [สถาปัตยกรรมระบบควบคุม (Control System Architecture)](#4-สถาปัตยกรรมระบบควบคุม-control-system-architecture)
-5. [ทฤษฎีและการออกแบบระบบควบคุม PID (PID Controller Formulation)](#5-ทฤษฎีและการออกแบบระบบควบคุม-pid-pid-controller-formulation)
-6. [การจำแนกสถานะกำแพง 8 กรณี (8 Wall Decision Cases Implementation)](#6-การจำแนกสถานะกำแพง-8-กรณี-8-wall-decision-cases-implementation)
-7. [กลไกการเคลื่อนที่ทีละ Grid และการหมุนตัว (Grid Step & Turn Mechanics)](#7-กลไกการเคลื่อนที่ทีละ-grid-และการหมุนตัว-grid-step--turn-mechanics)
-8. [การอ้างอิงโค้ดจริงที่เกี่ยวข้องทั้งหมด (Detailed Source Code References)](#8-การอ้างอิงโค้ดจริงที่เกี่ยวข้องทั้งหมด-detailed-source-code-references)
-9. [การปรับจูนพารามิเตอร์และผลการทดลอง (Tuning & Experimental Results)](#9-การปรับจูนพารามิเตอร์และผลการทดลอง-tuning--experimental-results)
-10. [คู่มือคำสั่งทดสอบระบบ (Operational Guide & CLI Commands)](#10-คู่มือคำสั่งทดสอบระบบ-operational-guide--cli-commands)
-11. [สรุปผลการดำเนินงานและข้อเสนอแนะ (Conclusion & Discussion)](#11-สรุปผลการดำเนินงานและข้อเสนอแนะ-conclusion--discussion)
+## 1. ภาพรวมการแบ่งส่วนงานของทั้งโปรเจกต์ (Work Breakdown)
 
----
+โครงงานระบบขับเคลื่อนอัตโนมัติ **RoboMaster EP Autonomous Grid Navigation System** มีขอบเขตครอบคลุม 5 ขั้นตอนหลัก ซึ่งสามารถนำมาจัดเป็น **5 ส่วนงานหลัก (Work Packages)** พร้อมการกระจายหน้าที่สำหรับสมาชิกกลุ่ม 4 คน ดังนี้:
 
-## 1. ภาพรวมการแบ่งส่วนงานของทั้งโปรเจกต์และการจัดสรรงานกลุ่ม (Work Breakdown & Team Allocation)
-
-โครงงานระบบขับเคลื่อนอัตโนมัติ **RoboMaster EP Autonomous Grid Navigation System** มีขอบเขตตาม [REQ.md](REQ.md) ครอบคลุม 5 ขั้นตอนหลัก ซึ่งสามารถนำมาจัดเป็น **5 ส่วนงานหลัก (Work Packages)** พร้อมการกระจายหน้าที่สำหรับสมาชิกกลุ่ม 4 คน ดังนี้:
-
-### 1.1 แผนผังการแบ่ง 5 ส่วนงานหลัก (Core Work Packages)
+### แผนผังการแบ่ง 5 ส่วนงานหลัก (Core Work Packages)
 
 ```mermaid
 flowchart TD
@@ -48,20 +33,9 @@ flowchart TD
     WP5 --> WP3
 ```
 
-### 1.2 ตารางการจัดสรรความรับผิดชอบในภาพรวมโปรเจกต์กลุ่ม
-
-| สมาชิก | บทบาทหน้าที่ (Role) | โมดูลโค้ดที่รับผิดชอบ | หัวข้อรายงานที่รับผิดชอบ | สถานะการจัดทำรายงาน |
-| :--- | :--- | :--- | :--- | :---: |
-| **นายคุณัชญ์ ทวีรัตน์** | **Sensors & Calibration Lead** | [src/calibrate.py](src/calibrate.py), [data/calibration_measurements.csv](data/calibration_measurements.csv) | การทดลองและสมการ Polynomial Fitting ของ Sharp L/R, ToF, Gripper และบทนำ | รายงานส่วนที่ 1 |
-| **นายชัชนันท์ บุญส่ง** | **Software Architecture Lead** | [src/sensor_pipeline.py](src/sensor_pipeline.py), [src/telemetry.py](src/telemetry.py), [main.py](main.py) | สถาปัตยกรรม Multi-Threading (Producer-Consumer), Shared State Hub และการกรองสัญญาณ | รายงานส่วนที่ 2 |
-| **นายพลกฤต บัวลอย** | **Control Systems Engineer** | [src/pid_controller.py](src/pid_controller.py), [src/robot_controller.py](src/robot_controller.py), [src/robot_system.py](src/robot_system.py) | **ระบบควบคุมการเคลื่อนที่ทีละ Grid, ตารางตัดสินใจ 8 Cases, PID Centering และ Yaw Lock** | **รายงานส่วนที่ 3 (ฉบับนี้ — ทำคนเดียว)** |
-| **นายศุภกิตต์ เชี่ยวหมอน**| **Manipulation & Path Planning Lead** | [src/gripper_controller.py](src/gripper_controller.py), [src/map_planner.py](src/map_planner.py), [analyze/pathing.ipynb](analyze/pathing.ipynb) | ลำดับการควบคุมแขนกล Pick & Drop, อัลกอริทึม A* บน Grid Map และการวิเคราะห์เส้นทางทับแผนที่ | รายงานส่วนที่ 4 & 5 |
-
-> **📌 บันทึกขอบเขตงาน**: รายงานฉบับนี้ (**REPORT_3.md**) จัดทำขึ้นเพื่อรายงานผลการพัฒนาและการทดลองใน **ส่วนงานที่ 3 (Grid Navigation & Closed-Loop PID Centering)** โดยผู้จัดทำ (**นายพลกฤต บัวลอย**) เป็นผู้รับผิดชอบ ออกแบบ พัฒนาโค้ด และเขียนรายงานในส่วนงานนี้คนเดียวทั้งหมด
-
 ---
 
-## 2. บทนำและวัตถุประสงค์ของส่วนที่ 3 (Introduction & Objectives)
+## 2. บทนำและวัตถุประสงค์ (Introduction & Objectives)
 
 ### 2.1 ความเป็นมาและความสำคัญ
 ในการเคลื่อนที่ของหุ่นยนต์ขับเคลื่อน 4 ล้อ Mecanum (Mecanum Wheel Chassis) เช่น **DJI RoboMaster EP** ภายในสนามแบบปิดที่มีลักษณะเป็นตารางกริด (Grid Maze) ปัญหาหลักที่พบบ่อยในการสั่งเคลื่อนที่แบบวงเปิด (Open-Loop Control / Dead Reckoning) ได้แก่:
@@ -71,9 +45,9 @@ flowchart TD
 
 เพื่อแก้ไขปัญหาดังกล่าว ระบบจึงต้องใช้ **การควบคุมแบบป้อนกลับวงปิด (Closed-Loop Feedback Control)** โดยนำข้อมูลระยะห่างจากเซนเซอร์ **Sharp Infrared (GP2Y0A41SK0F)** ด้านซ้ายและขวา ร่วมกับเซนเซอร์ **ToF (Time-of-Flight)** ด้านหน้า และเซนเซอร์วัดมุม **IMU (Yaw Heading)** มาประมวลผลแบบ Real-Time เพื่อปรับแก้วิถีการเคลื่อนที่ของหุ่นยนต์ให้อยู่กึ่งกลางช่องทางเดินอย่างแม่นยำ
 
-### 2.2 วัตถุประสงค์หลักของส่วนงานที่ 3
+### 2.2 วัตถุประสงค์หลัก
 1. พัฒนาระบบการเคลื่อนที่ทีละช่อง Grid (Grid-by-Grid Step Navigation) ขนาด $60 \times 60\text{ cm}$
-2. พัฒนาระบบ **Closed-Loop PID Centering Controller** บนแกน Y (Lateral Motion) เพื่อรักษาระยะห่างให้อยู่กึ่งกลางระหว่างกำแพงตามเงื่อนไขใน [REQ.md](REQ.md)
+2. พัฒนาระบบ **Closed-Loop PID Centering Controller** บนแกน Y (Lateral Motion) เพื่อรักษาระยะห่างให้อยู่กึ่งกลางระหว่างกำแพง
 3. พัฒนาระบบ **Heading Stabilization PID** บนแกน Z (Yaw Angular Velocity) เพื่อล็อกทิศทางหัวหุ่นให้ขนานกับแนวแกนกริด ($0^\circ, 90^\circ, 180^\circ, -90^\circ$) ตลอดเวลา
 4. ครอบคลุมเงื่อนไขการตัดสินใจตามสภาพแวดล้อมของกำแพงครบทั้ง **8 รูปแบบ (8 Wall Decision Cases)**
 5. ทำงานร่วมกับสถาปัตยกรรมมัลติเธรด (Thread 1: Sensor Pipeline $\rightarrow$ Thread 2: Robot Controller) ได้อย่างราบรื่นโดยไม่มี Hardware Blocking
@@ -82,7 +56,7 @@ flowchart TD
 
 ## 3. ข้อกำหนดทางกายภาพและสภาพแวดล้อม (Physical & Environmental Specifications)
 
-ตามที่ระบุในข้อกำหนด [REQ.md](REQ.md) พารามิเตอร์ทางกายภาพของสนามและตัวหุ่นยนต์มีดังนี้:
+พารามิเตอร์ทางกายภาพของสนามและตัวหุ่นยนต์มีดังนี้:
 
 | รายการ | ขนาด / ค่าพารามิเตอร์ | รายละเอียดการนำไปใช้ |
 | :--- | :--- | :--- |
@@ -92,7 +66,7 @@ flowchart TD
 | **ความกว้างตัวหุ่นยนต์ (Robot Width)** | $\approx 25.0\text{ cm}$ ($250\text{ mm}$) | วัดจากขอบล้อซ้ายถึงขอบล้อขวา |
 | **ความยาวตัวหุ่นยนต์** | $33.0\text{ cm}$ (ไม่รวมแขน) / $38.0\text{ cm}$ (พับแขน) | ใช้คำนวณจุดหยุดปลอดภัย |
 | **ระยะกึ่งกลางปกติ (Nominal Side Distance)** | $\mathbf{137.5 - 140.0\text{ mm}}$ | คำนวณจาก $(525\text{ mm} - 250\text{ mm}) / 2 = 137.5\text{ mm}$ |
-| **ระยะ Deadband Tolerance** | $\pm \mathbf{20.0\text{ mm}}$ ($\pm 2\text{ cm}$) | เกณฑ์ยอมรับความคลาดเคลื่อนตามข้อกำหนด |
+| **ระยะ Deadband Tolerance** | $\pm \mathbf{12.5\text{ mm}}$ ($\pm 2\text{ cm}$) | เกณฑ์ยอมรับความคลาดเคลื่อนตามข้อกำหนด |
 | **เกณฑ์ตรวจจับกำแพงด้านข้าง (Wall Threshold)** | $\le 260.0\text{ mm}$ | หากเกินกว่านี้ถือว่าเป็นพื้นที่เปิดโล่ง (ไม่มีกำแพงข้าง) |
 | **เกณฑ์ตรวจจับกำแพงด้านหน้า (Front Wall Threshold)** | $\le 350.0\text{ mm}$ | หากต่ำกว่า $350\text{ mm}$ ถือว่ามีกำแพงขวางหน้า |
 | **ระยะหยุดหน้ากำแพงที่กึ่งกลางช่อง (Front Target)** | $150.0\text{ mm}$ | ระยะจาก ToF ถึงกำแพงหน้าเมื่อหุ่นอยู่กลางช่องพอดี |
@@ -165,7 +139,7 @@ $$u_k = K_p \cdot e_k + K_i \cdot \sum_{i=0}^{k} e_i \Delta t + K_d \cdot \frac{
 ### 5.2 ระบบควบคุมกึ่งกลางแกน Y (Lateral Centering PID)
 - **Input**: Error ระยะทางด้านข้าง $e_y\text{ (mm)}$
 - **Output**: ความเร็วสไลด์ข้าง $v_y\text{ (m/s)}$
-- **Deadband**: $20.0\text{ mm}$ (หาก $|e_y| < 20\text{ mm}$ หรือ $2\text{ cm}$ จะกำหนดให้ $v_y = 0$ เพื่อป้องกันไม่ให้หุ่นแกว่งไปมา)
+- **Deadband**: $12.5\text{ mm}$ (หาก $|e_y| < 12.5\text{ mm}$ หรือ $1.25\text{ cm}$ จะกำหนดให้ $v_y = 0$ เพื่อป้องกันไม่ให้หุ่นแกว่งไปมา)
 - **Anti-Windup Limit**: $30.0$
 - **Max Output**: $\pm 0.17\text{ m/s}$ (เพื่อความนุ่มนวลในการปรับทิศทาง)
 
@@ -357,16 +331,16 @@ def navigate_single_grid_step(self, step_idx: int = 1, total_steps: int = 1):
 
 ---
 
-## 9. การปรับจูนพารามิเตอร์และผลการทดลอง (Tuning & Experimental Results)
+## 9. การปรับจูนพารามิเตอร์ (Tuning)
 
-### 9.1 ค่าพารามิเตอร์ Gain ที่เหมาะสมที่สุด (Optimal PID Parameters)
+### ค่าพารามิเตอร์ Gain ที่เหมาะสมที่สุด (Optimal PID Parameters)
 
 | Parameter | สัญลักษณ์ | ค่าที่กำหนด | หน่วย | คำอธิบายและเหตุผลทางเทคนิค |
 | :--- | :--- | :---: | :---: | :--- |
 | **Lateral Proportional Gain** | $K_{p,y}$ | `0.0010` | $(\text{m/s})/\text{mm}$ | Error $50\text{ mm} \rightarrow v_y = 0.05\text{ m/s}$ (ปรับนุ่มนวล ไม่กระชาก) |
 | **Lateral Integral Gain** | $K_{i,y}$ | `0.0001` | $(\text{m/s})/(\text{mm}\cdot\text{s})$ | ขจัด Steady-state Error ขณะเดินผ่านช่องยาว |
 | **Lateral Derivative Gain** | $K_{d,y}$ | `0.0010` | $(\text{m/s})/(\text{mm}/\text{s})$ | เพิ่ม Damping ป้องกันการแกว่งชนกำแพงไป-มา |
-| **Lateral Deadband** | $e_{\text{db},y}$ | `20.0` | $\text{mm}$ | สอดคล้องกับข้อกำหนด $\pm 2\text{ cm}$ ไม่สั่งมอเตอร์หากอยู่ในเกณฑ์ |
+| **Lateral Deadband** | $e_{\text{db},y}$ | `12.5` | $\text{mm}$ | สอดคล้องกับข้อกำหนด $\pm 1.25\text{ cm}$ ไม่สั่งมอเตอร์หากอยู่ในเกณฑ์ |
 | **Max Lateral Speed** | $v_{y,\max}$ | `0.17` | $\text{m/s}$ | จำกัดความเร็วเบี่ยงข้างสูงสุดเพื่อความปลอดภัย |
 | **Heading Proportional Gain**| $K_{p,z}$ | `1.8` | $(\text{deg/s})/\text{deg}$ | Error $1.0^\circ \rightarrow v_z = 1.8^\circ/\text{s}$ ตอบสนองทันที |
 | **Heading Integral Gain** | $K_{i,z}$ | `0.05` | $(\text{deg/s})/(\text{deg}\cdot\text{s})$ | ป้องกันมุมไหลสะสมจากล้อลื่น |
@@ -374,71 +348,11 @@ def navigate_single_grid_step(self, step_idx: int = 1, total_steps: int = 1):
 | **Nominal Side Distance** | $d_{\text{nom}}$ | `140.0` | $\text{mm}$ | ระยะเป้าหมายจากขอบหุ่นถึงกำแพงเดี่ยว |
 | **Base Forward Speed** | $v_{\text{base}}$ | `0.25` | $\text{m/s}$ | ความเร็วเดินหน้าปกติ ($25\text{ cm/s} \rightarrow 1\text{ Grid ใช้เวลา } \approx 2.4\text{s}$) |
 
-### 9.2 ผลการทดสอบเปรียบเทียบ (Open-Loop vs. Closed-Loop PID Centering)
-
-| ตัวชี้วัดประสิทธิภาพ (Metrics) | Open-Loop Navigation | Closed-Loop PID Centering (Step 3) | การปรับปรุง (Improvement) |
-| :--- | :---: | :---: | :---: |
-| **ความคลาดเคลื่อนกึ่งกลางเฉลี่ย (Mean Lateral Error)** | $\pm 58.4\text{ mm}$ | $\mathbf{\pm 7.8\text{ mm}}$ | **ดีขึ้น 86.6%** (อยู่ในเกณฑ์ $< 20\text{ mm}$) |
-| **ความคลาดเคลื่อนมุมหัวหุ่น (Heading Drift per 3 Grids)** | $\approx 6.5^\circ$ | $\mathbf{< 0.8^\circ}$ | **ดีขึ้น 87.7%** |
-| **อัตราการเกิดอุบัติเหตุเฉี่ยวชนกำแพง (Collision Rate)** | $40\%$ (ในช่องทางเดินแคบ) | $\mathbf{0\%}$ (ผ่านการทดสอบ 10/10 รอบ) | **ปลอดภัย 100%** |
-| **ความแม่นยำในการหยุดกึ่งกลางช่อง (Stop Position Error)** | $\pm 45\text{ mm}$ | $\mathbf{\pm 12\text{ mm}}$ | **ดีขึ้น 73.3%** |
-
 ---
 
-## 10. คู่มือคำสั่งทดสอบระบบ (Operational Guide & CLI Commands)
+## 10. สรุปผลการดำเนินงาน (Conclusion)
 
-คำสั่งทั้งหมดสามารถเรียกใช้งานผ่าน [main.py](main.py) ได้โดยตรง:
-
-### 10.1 ทดสอบการเดินทีละ Grid ในสนามจริง (Step Test)
-```bash
-# ทดสอบเดินหน้า 1 ช่อง (60 cm) พร้อมเปิดระบบ PID Centering
-python main.py step-test --cells 1 --conn-type ap
-
-# ทดสอบเดินหน้าต่อเนื่อง 2 ช่อง (120 cm)
-python main.py step-test --cells 2 --conn-type ap
-
-# ปรับความเร็วเดินหน้าและระยะ Nominal
-python main.py step-test --cells 1 --speed 0.20 --nominal-side 140.0
-```
-
-### 10.2 ทดสอบการหมุนตัวและ Snap Heading (Turn Test)
-```bash
-# หมุนเลี้ยวขวา 90 องศา
-python main.py turn-test --direction right --conn-type ap
-
-# หมุนเลี้ยวซ้าย 90 องศา
-python main.py turn-test --direction left --conn-type ap
-
-# กลับหลังหัน 180 องศา
-python main.py turn-test --direction around --conn-type ap
-```
-
-### 10.3 มอนิเตอร์ค่าเซนเซอร์และการจำแนกสถานะกำแพงสด (Live Monitor)
-```bash
-python main.py monitor --conn-type ap
-```
-
-### 10.4 ทดสอบในโหมดจำลอง (Dry-Run / Simulation)
-```bash
-# จำลองการเดินตามแผนที่พร้อมจำแนก 8 Wall Cases
-python main.py simulate --plan data/robot_map_plan.json -y --skip-pick --skip-drop
-```
-
-### 10.5 รันหุ่นยนต์จริงตามแผนที่แบบอัตโนมัติเต็มรูปแบบ (Full Run)
-```bash
-python main.py run --plan data/robot_map_plan.json --conn-type ap
-```
-
----
-
-## 11. สรุปผลการดำเนินงานและข้อเสนอแนะ (Conclusion & Discussion)
-
-### 11.1 สรุปความสำเร็จ
-1. **บรรลุเป้าหมายตาม REQ.md ครบ 100%**: ระบบสามารถเดินทีละ Grid ขนาด $60 \times 60\text{ cm}$ และรักษากึ่งกลางระหว่างกำแพงภายใต้ความคลาดเคลื่อน $|\text{Sharp}_L - \text{Sharp}_R| < 2\text{ cm}$ และ $\text{Sharp}_{L/R} \pm 2\text{ cm}$ จากระยะปกติ
+1. **บรรลุเป้าหมายครบ 100%**: ระบบสามารถเดินทีละ Grid ขนาด $60 \times 60\text{ cm}$ และรักษากึ่งกลางระหว่างกำแพงภายใต้ความคลาดเคลื่อน $|\text{Sharp}_L - \text{Sharp}_R| < 2\text{ cm}$ และ $\text{Sharp}_{L/R} \pm 2\text{ cm}$ จากระยะปกติ
 2. **รองรับ 8 Wall Decision Cases อย่างสมบูรณ์**: ครอบคลุมทั้งกรณีมีกำแพงขวางหน้า/ไม่มีกำแพงหน้า และมีกำแพง 2 ข้าง/ซ้ายเดี่ยว/ขวาเดี่ยว/พื้นที่เปิดโล่ง
 3. **การทำงานแบบ Multi-Threading ที่ไร้รอยต่อ**: Thread 2 สามารถดึงข้อมูล Sensor Snapshot จาก Thread 1 มาคำนวณ PID ที่ความถี่ $20\text{ Hz}$ ได้อย่างราบรื่นโดยไม่เกิด Race Condition หรือ Bottleneck
 4. **ความแม่นยำและความปลอดภัย**: ระบบ Fine Center Alignment และ Front Deceleration ช่วยลดแรงกระแทกและทำให้หุ่นยนต์หยุดนิ่งตรงกลางช่องได้อย่างสมบูรณ์
-
-### 11.2 ข้อสังเกตและข้อเสนอแนะสำหรับการพัฒนาต่อยอด
-- **เซนเซอร์ Sharp ในระยะสั้นมาก ($< 4\text{ cm}$)**: ค่าแรงดัน ADC อาจเกิดความไม่เป็นเชิงเส้น (Non-linear inversion) จึงแนะนำให้ใช้ ToF ด้านหน้าร่วมกับการจำกัด Deadband ของด้านข้างเพื่อป้องกันความผิดพลาด
-- **การชดเชยค่าสัมประสิทธิ์แรงเสียดทาน**: หากนำหุ่นไปวิ่งบนพื้นผิวที่มีความลื่นสูงเป็นพิเศษ (เช่น พื้นกระเบื้องมันเงา) สามารถปรับเพิ่มค่า $K_{d,y}$ และลด $v_{\text{base}}$ เป็น $0.20\text{ m/s}$ เพื่อเพิ่มเสถียรภาพในการเกาะถนน
