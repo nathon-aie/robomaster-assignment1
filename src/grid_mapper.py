@@ -402,7 +402,7 @@ class DiscoveredGridMap:
     ) -> Dict[str, Any]:
         """Converts the discovered map to the exact JSON schema required by robot_map_plan.json."""
         start_coord = list(start) if start else [0, self.rows - 1]
-        goal_coord = list(goal) if goal else [self.cols - 1, 0]
+        goal_coord = list(goal) if goal else [self.cols - 1, self.rows - 1]
 
         walls_data = []
         for r in range(self.rows):
@@ -486,7 +486,7 @@ def plot_discovered_map(json_file: str, output_png: Optional[str] = None) -> Opt
     rows = grid_info.get("rows", 6)
     cols = grid_info.get("cols", 5)
     start = data.get("start", [0, rows - 1])
-    goal = data.get("goal", [cols - 1, 0])
+    goal = data.get("goal", [cols - 1, rows - 1])
     walls_list = data.get("walls", [])
     path_list = data.get("path", [])
     metadata = data.get("discovery_metadata", {})
@@ -685,6 +685,8 @@ class AutonomousMazeExplorer:
         robot_system: RobotSystem,
         start_col: int = 0,
         start_row: int = 3,
+        goal_col: Optional[int] = 3,
+        goal_row: Optional[int] = 3,
         start_heading: int = NORTH,
         cols: int = 4,
         rows: int = 4,
@@ -695,6 +697,8 @@ class AutonomousMazeExplorer:
         self.sys = robot_system
         self.start_col = start_col
         self.start_row = start_row
+        self.goal_col = goal_col if goal_col is not None else cols - 1
+        self.goal_row = goal_row if goal_row is not None else rows - 1
         self.start_heading = start_heading
         self.curr_col = start_col
         self.curr_row = start_row
@@ -919,8 +923,8 @@ class AutonomousMazeExplorer:
         stats["total_forward_moves"] = self.total_forward_steps
         stats["total_turns"] = self.total_turns
 
-        # Generate sample path from start to farthest cell or opposite corner
-        goal_candidate = (self.discovered_map.cols - 1, 0)
+        # Generate sample path from start to exploration goal (3, 3)
+        goal_candidate = (self.goal_col, self.goal_row)
         final_path = self.discovered_map.find_path_bfs(
             self.start_col, self.start_row, goal_candidate[0], goal_candidate[1]
         )

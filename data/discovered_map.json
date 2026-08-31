@@ -11,7 +11,7 @@
     ],
     "goal": [
         3,
-        0
+        3
     ],
     "walls": [
         {
@@ -233,13 +233,25 @@
             0
         ],
         [
+            2,
+            1
+        ],
+        [
+            2,
+            2
+        ],
+        [
+            2,
+            3
+        ],
+        [
             3,
-            0
+            3
         ]
     ],
     "commands": [],
     "discovery_metadata": {
-        "explored_timestamp": 1788157222.0174456,
+        "explored_timestamp": 1788176307.3915536,
         "statistics": {
             "total_cells": 16,
             "visited_cells": 14,

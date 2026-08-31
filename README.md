@@ -29,6 +29,7 @@
 │   ├── robot_controller.py       # Thread 2: ควบคุมการเคลื่อนที่ทีละ Grid และ Actuators
 │   ├── robot_system.py           # ตัวควบคุมหลัก (Master Orchestrator) จัดการ 2 Threads & SDK
 │   ├── gripper_controller.py     # โมดูลควบคุมแขนกลและ Gripper ลำดับ Pick & Drop (Step 4)
+│   ├── grid_mapper.py            # โมดูล Grid Mapping & Autonomous Maze Exploration (DFS + Backtracking)
 │   ├── telemetry.py              # ตัวบันทึกข้อมูล Time-series แยกโฟลเดอร์รัน และวิเคราะห์สถิติ
 │   └── map_planner.py            # GUI แผนที่จำลอง Grid + ระบบหาเส้นทาง A* (Pygame)
 │
@@ -168,8 +169,21 @@ python main.py calibrate fit data\calibration_measurements.csv
 
 ---
 
+### 8. สำรวจเขาวงกตและสร้างแผนที่อัตโนมัติ (Autonomous Grid Mapping & Exploration)
+หุ่นยนต์จะเคลื่อนที่สำรวจเขาวงกตที่ไม่เคยรู้แผนที่ล่วงหน้าด้วยตัวเอง (DFS + Frontier Backtracking) และ Export แผนที่ออกมาเป็นไฟล์ JSON:
+```cmd
+# รันจำลองการสำรวจแบบ Mock Simulation
+python main.py explore --mock --sim-maze data\robot_map_plan.json --output data\discovered_map.json
+
+# รันสำรวจบนหุ่นยนต์จริง
+python main.py explore --conn-type ap --output data\discovered_map.json --start-col 0 --start-row 5
+```
+
+---
+
 ## 📚 เอกสารประกอบฉบับเต็ม
 
+- 📖 [MAPPING.md](MAPPING.md) — คู่มือโมดูล Autonomous Grid Mapping และการสำรวจเขาวงกตอัตโนมัติ (ตาม mapping.txt)
 - 📖 [docs/STEP1_CALIBRATION.md](docs/STEP1_CALIBRATION.md) — รายละเอียดการ Calibrate เซนเซอร์ Sharp/ToF/Gripper
 - 📖 [docs/STEP2_MULTITHREADING.md](docs/STEP2_MULTITHREADING.md) — สถาปัตยกรรม Multi-threading (Producer-Consumer)
 - 📖 [docs/STEP3_PID.md](docs/STEP3_PID.md) — รายละเอียดระบบ PID Centering และตาราง 8 Wall Decision Cases

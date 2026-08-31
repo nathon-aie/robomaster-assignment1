@@ -1,5 +1,11 @@
 """RoboMaster EP Autonomous Grid Navigation Package."""
 
+from .grid_mapper import (
+    AutonomousMazeExplorer,
+    DiscoveredCell,
+    DiscoveredGridMap,
+    GroundTruthMazeSimulator,
+)
 from .pid_controller import PIDController, PIDGains, WallCenteringPID
 from .robot_controller import MockRobotActuators, RobotControllerThread
 from .robot_system import RobotSystem
@@ -34,4 +40,8 @@ __all__ = [
     "ExponentialMovingAverageFilter",
     "OutlierRejectionFilter",
     "SensorFilterPipeline",
+    "DiscoveredCell",
+    "DiscoveredGridMap",
+    "AutonomousMazeExplorer",
+    "GroundTruthMazeSimulator",
 ]

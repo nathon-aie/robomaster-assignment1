@@ -328,8 +328,74 @@ def cmd_map(args):
     launch_map_gui()
 
 
+def cmd_explore(args):
+    print("=" * 70)
+    print("🧭 AUTONOMOUS GRID MAZE EXPLORATION & MAPPING MODULE")
+    print("=" * 70)
+
+    heading_map = {
+        "north": 0, "0": 0, "up": 0,
+        "east": 1, "90": 1, "right": 1,
+        "south": 2, "180": 2, "down": 2,
+        "west": 3, "-90": 3, "270": 3, "left": 3,
+    }
+    start_heading = heading_map.get(str(args.start_heading).lower(), 0)
+
+    sys_runner = RobotSystem(
+        calibration_file=args.calibration,
+        sensor_rate_hz=args.rate,
+        mock_mode=args.mock,
+        conn_type=args.conn_type,
+    )
+    connected = sys_runner.connect_robot()
+    if not connected and not args.mock and not getattr(args, "allow_mock_fallback", True):
+        print("[Error] Failed to connect to robot hardware. Exiting.")
+        return 1
+
+    sys_runner.setup_threads()
+    if sys_runner.thread_2_controller:
+        sys_runner.thread_2_controller.base_speed = args.speed
+        sys_runner.thread_2_controller.wall_pid.nominal_side_dist_mm = args.nominal_side
+        sys_runner.thread_2_controller.step_pause_sec = args.step_pause
+
+    from src.grid_mapper import AutonomousMazeExplorer
+
+    explorer = AutonomousMazeExplorer(
+        robot_system=sys_runner,
+        start_col=args.start_col,
+        start_row=args.start_row,
+        goal_col=args.goal_col,
+        goal_row=args.goal_row,
+        start_heading=start_heading,
+        cols=args.cols,
+        rows=args.rows,
+        output_file=args.output,
+        sim_ground_truth_file=args.sim_maze,
+        step_pause_sec=args.step_pause,
+    )
+
+    def sig_handler(sig, frame):
+        print("\nInterrupt received. Stopping explorer & saving current progress...")
+        explorer.discovered_map.save_to_json(
+            filepath=args.output,
+            start=(args.start_col, args.start_row),
+            goal=(args.goal_col, args.goal_row),
+        )
+        sys_runner.shutdown()
+        sys.exit(0)
+
+    signal.signal(signal.SIGINT, sig_handler)
+
+    try:
+        sys_runner.start()
+        explorer.explore(max_steps=args.max_steps)
+        return 0
+    finally:
+        sys_runner.shutdown()
+
+
 def main():
-    parser = argparse.ArgumentParser(description="RoboMaster EP Autonomous Navigation System (Steps 1-3)")
+    parser = argparse.ArgumentParser(description="RoboMaster EP Autonomous Navigation System")
     subparsers = parser.add_subparsers(dest="command", required=True)
 
     # 1. Run live
@@ -416,6 +482,32 @@ def main():
     # 8. Map GUI
     subparsers.add_parser("map", help="Launch interactive Grid Map & A* Planner GUI")
 
+    # 9. Explore / Grid Mapping (Autonomous Maze Exploration)
+    exp_p = subparsers.add_parser("explore", help="Autonomous maze exploration and map discovery")
+    exp_p.add_argument("--conn-type", choices=("ap", "sta"), default="ap")
+    exp_p.add_argument("--mock", action="store_true", help="Run exploration in simulation/mock mode")
+    exp_p.add_argument("--sim-maze", default="data/robot_map_plan.json", help="Ground truth reference maze for mock simulation")
+    exp_p.add_argument("--start-col", type=int, default=0, help="Initial column position (0-indexed)")
+    exp_p.add_argument("--start-row", type=int, default=3, help="Initial row position (0-indexed, bottom-left default for 4x4)")
+    exp_p.add_argument("--goal-col", type=int, default=3, help="Target goal column position (0-indexed, default: 3)")
+    exp_p.add_argument("--goal-row", type=int, default=3, help="Target goal row position (0-indexed, default: 3)")
+    exp_p.add_argument("--start-heading", default="north", help="Initial heading direction (north, east, south, west)")
+    exp_p.add_argument("--cols", type=int, default=4, help="Grid columns count")
+    exp_p.add_argument("--rows", type=int, default=4, help="Grid rows count")
+    exp_p.add_argument("--output", default="data/discovered_map.json", help="Path to export discovered map JSON")
+    exp_p.add_argument("--max-steps", type=int, default=150, help="Maximum exploration steps limit")
+    exp_p.add_argument("--calibration", default="calibration_output/calibration.json")
+    exp_p.add_argument("--rate", type=float, default=20.0, help="Sensor collection rate Hz")
+    exp_p.add_argument("--speed", type=float, default=0.25, help="Base movement cruising speed (m/s)")
+    exp_p.add_argument("--nominal-side", type=float, default=140.0, help="Nominal single-wall distance (mm)")
+    exp_p.add_argument("--step-pause", type=float, default=0.5, help="Pause between moves/turns in seconds (0.05 for fast sim)")
+    exp_p.add_argument("--allow-mock-fallback", action="store_true", help="Fallback to mock if robot is unavailable")
+
+    # 10. Plot Map Image
+    plot_p = subparsers.add_parser("plot-map", help="Render graphical plot image of a map JSON file")
+    plot_p.add_argument("map_file", nargs="?", default="data/discovered_map.json", help="Path to map JSON file")
+    plot_p.add_argument("--output", "-o", default=None, help="Output PNG file path (default: same name as json with .png)")
+
     args = parser.parse_args()
 
     if args.command == "simulate":
@@ -434,6 +526,12 @@ def main():
         return cmd_calibrate(args)
     elif args.command == "map":
         return cmd_map(args)
+    elif args.command == "explore":
+        return cmd_explore(args)
+    elif args.command == "plot-map":
+        from src.grid_mapper import plot_discovered_map
+        plot_discovered_map(args.map_file, args.output)
+        return 0
     return 0
 
 
