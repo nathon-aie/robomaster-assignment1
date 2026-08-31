@@ -97,7 +97,7 @@ class WallCenteringPID:
     # Corridor inner width ~ 525mm, Robot width 250mm -> ~137.5mm each side
     DEFAULT_NOMINAL_SIDE_MM = 140.0
     DEADBAND_TOLERANCE_MM = 12.5  # 2 cm tolerance as specified in REQ (|L-R| < 2cm, L/R +- 2cm)
-    WALL_DETECT_THRESHOLD_MM = 260.0  # Max distance to consider side wall present
+    WALL_DETECT_THRESHOLD_MM = 220.0  # Max distance to consider side wall present in current cell (< 220mm)
     FRONT_WALL_STOP_MM = 150.0  # Distance from front ToF to front wall at grid center
 
     def __init__(

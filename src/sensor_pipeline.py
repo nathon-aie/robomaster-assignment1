@@ -58,6 +58,10 @@ class CalibrationManager:
         # If polynomial calibration exists for sensor
         if sensor_name in self.models:
             fit = self.models[sensor_name]
+            # Sharp IR sensors in open space (no obstacles within 30-40cm) output very low ADC values (<= 140)
+            if sensor_name.startswith("sharp") and raw_value <= 140.0:
+                return 600.0  # Open space / far distance (> 60 cm)
+
             coeffs = fit.get("coefficients", [])
             if coeffs:
                 # Polynomial evaluation: c_n * x^n + ... + c_1 * x + c_0
@@ -75,8 +79,8 @@ class CalibrationManager:
             return float(raw_value)
         elif sensor_name.startswith("sharp"):
             # Generic 4-30cm Sharp IR inverse approximation if no calibration curve
-            if raw_value <= 20:
-                return 400.0
+            if raw_value <= 140.0:
+                return 600.0
             return max(30.0, min(400.0, (1000.0 / (raw_value + 10.0)) * 10.0))
         elif sensor_name == "gripper":
             return float(raw_value)
@@ -560,6 +564,12 @@ class SensorCollectorThread(threading.Thread):
                 self._initial_pos_offset = (0.0, 0.0)
         print(f"[SensorCollectorThread] Position Zero Reset to ({self._initial_pos_offset[0]:.3f}, {self._initial_pos_offset[1]:.3f}) -> (0, 0)")
 
+    def flush_filters(self):
+        """Flushes/resets temporal filter buffers on cell transitions to avoid residual lag."""
+        self.sharp_left_filter.reset()
+        self.sharp_right_filter.reset()
+        self.tof_filter.reset()
+
     def run(self):
         """Thread 1 main execution loop."""
         while self._running.is_set():
@@ -623,14 +633,16 @@ class SensorCollectorThread(threading.Thread):
             mm_tof = self.calibration_manager.raw_to_mm("tof", filt_tof)
 
             # Calculate wall detection & lateral alignment difference (Req 3)
+            # In 60x60cm grid with 25cm robot, centered wall distance is ~140mm.
+            # True side wall is < 220mm. Open space (> 400mm or low ADC) is not a wall.
             sharp_diff = 0.0
             wall_left = False
             wall_right = False
             wall_front = False
 
-            if mm_left is not None and mm_left < 280.0:
+            if mm_left is not None and mm_left < 220.0:
                 wall_left = True
-            if mm_right is not None and mm_right < 280.0:
+            if mm_right is not None and mm_right < 220.0:
                 wall_right = True
             if mm_tof is not None and mm_tof < 350.0:
                 wall_front = True
